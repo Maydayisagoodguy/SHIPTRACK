@@ -197,6 +197,7 @@ function status() {
     vesselCount: vesselCache.size(),
     apiKeySet: !!(API_KEY && API_KEY !== 'your_aisstream_api_key_here'),
     provider: 'AISstream',
+    configured: !!(API_KEY && API_KEY !== 'your_aisstream_api_key_here'),
     lastMessageAt,
     lastError,
   };

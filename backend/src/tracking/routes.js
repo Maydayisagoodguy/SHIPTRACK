@@ -2,7 +2,10 @@ const express = require('express');
 const router = express.Router();
 const vesselCache = require('./vesselCache');
 const sseManager = require('./sseManager');
-const aisClient = require('./aisClient');
+const trackingManager = require('./trackingManager');
+const routeService = require('./routeService');
+const eventStore = require('./eventStore');
+const database = require('../persistence/database');
 const store = require('./shipmentsStore');
 
 router.get('/shipments', (req, res) => {
@@ -41,13 +44,13 @@ router.post('/shipments', (req, res) => {
     notes,
   });
 
-  aisClient.refreshSubscription();
+  trackingManager.refresh();
   res.status(201).json(entry);
 });
 
 router.delete('/shipments/:id', (req, res) => {
   store.remove(req.params.id);
-  aisClient.refreshSubscription();
+  trackingManager.refresh();
   res.json({ ok: true });
 });
 
@@ -68,7 +71,9 @@ router.get('/stream', (req, res) => {
 router.get('/status', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
-    ...aisClient.status(),
+    ...trackingManager.status(),
+    routing: routeService.status(),
+    database: database.status(),
     sseClients: sseManager.count(),
     trackedShipments: store.getAll().length,
     uptime: process.uptime(),
@@ -84,6 +89,25 @@ router.get('/vessel/:mmsi', (req, res) => {
 router.get('/track/:mmsi', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json(vesselCache.getTrack(req.params.mmsi));
+});
+
+router.get('/route/:shipmentId', async (req, res) => {
+  const shipment = store.getById(req.params.shipmentId);
+  if (!shipment) return res.status(404).json({ error: 'Shipment not found.' });
+  try {
+    const vessel = vesselCache.get(shipment.mmsi);
+    const force = req.query.refresh === 'true';
+    const route = await routeService.getRoute(shipment, vessel, force);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(route);
+  } catch (error) {
+    res.status(502).json({ error: error.message });
+  }
+});
+
+router.get('/events/:shipmentId', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(eventStore.forShipment(req.params.shipmentId));
 });
 
 module.exports = router;

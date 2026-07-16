@@ -1,10 +1,17 @@
 # Dependencies
 node_modules/
 
-# Environment — never commit real keys
+# Environment - never commit real keys
 .env
 .env.local
 .env.production
+
+# Runtime tracking data
+backend/data/routes-cache.json
+backend/data/tracking-events.json
+
+# Local visual QA output
+ui-*.png
 
 # OS
 .DS_Store

@@ -3,7 +3,8 @@ require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const express  = require('express');
 const cors     = require('cors');
 const path     = require('path');
-const aisClient = require('./tracking/aisClient');
+const trackingManager = require('./tracking/trackingManager');
+const database = require('./persistence/database');
 const routes   = require('./tracking/routes');
 
 const app  = express();
@@ -23,7 +24,7 @@ app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, '../../frontend/index.html'));
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log('');
   console.log('  ╔══════════════════════════════════════╗');
   console.log('  ║   HUMANITY ERP — Shipment Tracker    ║');
@@ -33,6 +34,6 @@ app.listen(PORT, () => {
   console.log(`  Frontend → http://localhost:${PORT}`);
   console.log('');
 
-  // Start AIS WebSocket (no-op if no API key set)
-  aisClient.connect();
+  await database.init();
+  trackingManager.start();
 });
