@@ -1,0 +1,1530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShipTrace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script>
+    window._srReady=false;
+    (function(){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/searoute@latest/dist/searoute.min.js';
+    s.onload=function(){window._srReady=true;};s.onerror=function(){};document.head.appendChild(s);})();
+  </script>
+  <style>
+/* ─── TOKENS ─────────────────────────────────────────── */
+:root{
+  --bg:#F7F8FA; --surface:#FFFFFF; --border:#EAECF0;
+  --text:#101828; --text2:#667085; --text3:#98A2B3;
+  --accent:#2563EB; --accent-bg:#EFF6FF; --accent-border:#BFDBFE;
+  --green:#16A34A; --green-bg:#F0FDF4;
+  --amber:#F59E0B; --amber-bg:#FFFBEB;
+  --red:#EF4444;   --red-bg:#FEF2F2; --red-border:#FECACA;
+  --sidebar-w:240px; --panel-w:320px;
+  --nav-h:64px; --kpi-h:44px;
+  --sh-xs:0 1px 2px rgba(16,24,40,.05);
+  --sh-sm:0 1px 3px rgba(16,24,40,.1),0 1px 2px rgba(16,24,40,.06);
+  --r-sm:6px; --r-md:10px; --r-lg:14px;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;}
+body{background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+
+/* ─── LOADING ─────────────────────────────────────────── */
+#loading{position:fixed;inset:0;z-index:9999;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .4s;}
+#loading.out{opacity:0;pointer-events:none;}
+.ld-icon{width:52px;height:52px;border-radius:14px;background:var(--accent);display:flex;align-items:center;justify-content:center;margin-bottom:20px;box-shadow:0 8px 24px rgba(37,99,235,.25);}
+.ld-brand{font-size:20px;font-weight:600;color:var(--text);letter-spacing:-.3px;}
+.ld-sub{font-size:12px;color:var(--text3);margin:5px 0 32px;}
+.ld-bar{width:180px;height:2px;background:var(--border);border-radius:2px;overflow:hidden;}
+.ld-fill{height:100%;width:0;background:var(--accent);border-radius:2px;animation:ldFill 2.4s cubic-bezier(.4,0,.2,1) forwards;}
+@keyframes ldFill{0%{width:0}30%{width:45%}100%{width:100%}}
+.ld-msg{margin-top:12px;font-size:11px;color:var(--text3);}
+
+/* ─── TOP NAV ─────────────────────────────────────────── */
+#nav{
+  height:var(--nav-h);flex-shrink:0;
+  display:flex;align-items:center;padding:0 20px;gap:12px;
+  background:rgba(255,255,255,.9);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);z-index:400;
+}
+.nav-logo{display:flex;align-items:center;gap:10px;width:var(--sidebar-w);flex-shrink:0;padding-right:12px;}
+.nav-icon{width:32px;height:32px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.nav-brand{font-size:15px;font-weight:600;color:var(--text);letter-spacing:-.2px;}
+.nav-divider{width:1px;height:20px;background:var(--border);}
+
+.nav-search{flex:1;max-width:380px;}
+.nav-search-box{
+  display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);
+  cursor:pointer;transition:border-color .15s,box-shadow .15s;
+}
+.nav-search-box:hover{border-color:#D0D5DD;background:#fff;}
+.nav-search-box input{background:none;border:none;outline:none;font-size:13px;font-family:inherit;color:var(--text);flex:1;min-width:0;cursor:pointer;}
+.nav-search-box input::placeholder{color:var(--text3);}
+.nav-kbd{font-size:10px;color:var(--text3);background:#fff;border:1px solid var(--border);border-radius:4px;padding:1px 6px;flex-shrink:0;white-space:nowrap;}
+
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.ais-chip{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);font-size:12px;font-weight:500;color:var(--text2);background:var(--surface);}
+.ais-dot{width:6px;height:6px;border-radius:50%;background:var(--text3);flex-shrink:0;}
+.ais-dot.live{background:var(--green);}
+.ais-dot.offline{background:var(--red);}
+.ais-dot.pending{background:var(--amber);animation:blink 1.4s ease infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+
+#clock{font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums;min-width:82px;text-align:center;}
+
+.nav-icon-btn{width:36px;height:36px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--text2);cursor:pointer;transition:all .12s;}
+.nav-icon-btn:hover{background:var(--bg);color:var(--text);}
+
+.btn-primary{display:flex;align-items:center;gap:6px;padding:7px 16px;border-radius:var(--r-sm);border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;transition:background .12s;white-space:nowrap;}
+.btn-primary:hover{background:#1D4ED8;}
+
+/* ─── LAYOUT ─────────────────────────────────────────── */
+#layout{display:flex;flex:1;overflow:hidden;}
+
+/* ─── SIDEBAR ─────────────────────────────────────────── */
+#sidebar{width:var(--sidebar-w);flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+
+.sb-head{padding:16px 16px 10px;border-bottom:1px solid var(--border);}
+.sb-section-label{font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.6px;text-transform:uppercase;margin-bottom:10px;}
+.sb-filters{display:flex;gap:4px;flex-wrap:wrap;}
+.sf{padding:4px 10px;border-radius:20px;border:1px solid transparent;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;color:var(--text2);background:transparent;transition:all .12s;white-space:nowrap;}
+.sf:hover{background:var(--bg);color:var(--text);}
+.sf.on{background:var(--accent-bg);border-color:var(--accent-border);color:var(--accent);}
+
+.sb-meta{padding:10px 16px 6px;display:flex;align-items:center;justify-content:space-between;}
+.sb-meta-lbl{font-size:11px;color:var(--text3);}
+.sb-meta-n{font-size:11px;font-weight:600;color:var(--text);}
+
+#sb-list{flex:1;overflow-y:auto;padding:4px 8px 8px;}
+#sb-list::-webkit-scrollbar{width:3px;}
+#sb-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+.sb-empty{padding:40px 16px;text-align:center;font-size:12px;color:var(--text3);line-height:1.8;}
+
+/* Ship card */
+.sc{
+  position:relative;padding:11px 12px 10px;border-radius:var(--r-md);cursor:pointer;
+  border:1px solid transparent;margin-bottom:3px;
+  transition:background .1s,border-color .1s,box-shadow .15s,transform .12s;
+}
+.sc:hover{background:var(--bg);border-color:var(--border);transform:translateY(-1px);box-shadow:var(--sh-xs);}
+.sc.on{background:var(--surface);border-color:var(--border);box-shadow:var(--sh-sm);}
+.sc.on::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:2.5px;border-radius:0 2px 2px 0;background:var(--accent);}
+
+.sc-top{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px;}
+.sc-name{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;}
+.sc-badge{font-size:9px;font-weight:600;padding:2px 7px;border-radius:10px;flex-shrink:0;white-space:nowrap;letter-spacing:.1px;}
+.sc-badge.in_transit{background:var(--accent-bg);color:var(--accent);}
+.sc-badge.arrived{background:var(--green-bg);color:var(--green);}
+.sc-badge.delayed{background:var(--red-bg);color:var(--red);}
+.sc-badge.loading{background:var(--amber-bg);color:var(--amber);}
+
+.sc-route{font-size:10px;color:var(--text3);margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+.sc-bar{height:2px;background:var(--border);border-radius:2px;margin-bottom:7px;overflow:hidden;}
+.sc-fill{height:100%;border-radius:2px;transition:width .4s ease;}
+
+.sc-foot{display:flex;align-items:center;justify-content:space-between;}
+.sc-pct{font-size:10px;font-weight:500;color:var(--text2);}
+.sc-eta-lbl{font-size:10px;color:var(--text3);}
+.sc-eta-lbl.rd{color:var(--red);}
+.sc-eta-lbl.gr{color:var(--green);}
+
+/* ─── MAP WRAP ─────────────────────────────────────────── */
+#map-wrap{flex:1;position:relative;overflow:hidden;}
+#map{position:absolute;inset:0;}
+
+/* KPI strip floating over map */
+.kpi-strip{
+  position:absolute;top:0;left:0;right:0;height:var(--kpi-h);z-index:20;
+  background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border);display:flex;align-items:center;
+}
+.kpi{flex:1;display:flex;flex-direction:column;align-items:center;padding:6px 0;border-right:1px solid var(--border);}
+.kpi:last-child{border-right:none;}
+.kpi-v{font-size:15px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;line-height:1.15;}
+.kpi-l{font-size:9px;color:var(--text3);margin-top:1px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;}
+
+/* AIS offline banner */
+#ais-banner{
+  display:none;position:absolute;top:calc(var(--kpi-h) + 10px);left:50%;transform:translateX(-50%);
+  z-index:30;background:rgba(254,242,242,.96);border:1px solid var(--red-border);
+  border-radius:var(--r-md);padding:8px 14px;font-size:11px;font-weight:500;
+  color:var(--red);align-items:center;gap:6px;white-space:nowrap;
+}
+#ais-banner.vis{display:flex;}
+
+/* Floating map controls */
+.map-controls{position:absolute;top:calc(var(--kpi-h) + 10px);left:12px;display:flex;gap:6px;z-index:10;}
+.map-pill{
+  display:flex;align-items:center;gap:5px;padding:6px 11px;
+  border-radius:20px;background:rgba(255,255,255,.9);backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,.7);box-shadow:var(--sh-xs);
+  font-size:11px;font-weight:500;color:var(--text);cursor:pointer;transition:all .12s;
+  white-space:nowrap;
+}
+.map-pill:hover{background:#fff;box-shadow:var(--sh-sm);}
+.map-pill.on{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+/* MapLibre control overrides */
+.maplibregl-ctrl-bottom-right{bottom:14px!important;right:14px!important;}
+.maplibregl-ctrl-bottom-left{bottom:14px!important;left:14px!important;}
+.maplibregl-ctrl button{background:rgba(255,255,255,.92)!important;border:1px solid var(--border)!important;}
+.maplibregl-ctrl-group{border:1px solid var(--border)!important;border-radius:var(--r-sm)!important;overflow:hidden;box-shadow:var(--sh-xs)!important;}
+
+/* ─── RIGHT PANEL ─────────────────────────────────────── */
+#right-panel{
+  width:var(--panel-w);flex-shrink:0;
+  border-left:1px solid var(--border);
+  position:relative;overflow:hidden;
+}
+
+/* Fleet overview */
+#fleet-view{
+  position:absolute;inset:0;background:var(--surface);
+  display:flex;flex-direction:column;overflow:hidden;
+  transition:opacity .22s,transform .22s;
+}
+#fleet-view.hidden{opacity:0;transform:translateX(8px);pointer-events:none;}
+
+.fv-hdr{padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.fv-title{font-size:13px;font-weight:600;color:var(--text);}
+.fv-clock{font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums;}
+
+.fv-body{flex:1;overflow-y:auto;padding-bottom:16px;}
+.fv-body::-webkit-scrollbar{width:3px;}
+.fv-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+.fv-sec{padding:14px 16px 6px;font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;}
+
+/* Stat grid in fleet view */
+.stat-grid-2{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border);}
+.stat-cell-2{padding:16px 14px;border-right:1px solid var(--border);}
+.stat-cell-2:nth-child(2n){border-right:none;}
+.stat-val{font-size:22px;font-weight:600;color:var(--text);letter-spacing:-.5px;font-variant-numeric:tabular-nums;}
+.stat-lbl{font-size:10px;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:.3px;}
+
+.ot-row{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.ot-label{font-size:11px;color:var(--text2);white-space:nowrap;}
+.ot-track{flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden;}
+.ot-fill{height:100%;background:var(--green);border-radius:2px;transition:width .5s ease;}
+.ot-pct{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;min-width:34px;text-align:right;}
+
+.mini-stats{display:flex;gap:0;border-bottom:1px solid var(--border);}
+.mini-stat{flex:1;padding:12px 14px;border-right:1px solid var(--border);}
+.mini-stat:last-child{border-right:none;}
+.mini-stat-v{font-size:14px;font-weight:600;color:var(--text);}
+.mini-stat-l{font-size:10px;color:var(--text3);margin-top:2px;}
+
+/* Cargo mix */
+.cm-row{display:flex;align-items:center;gap:8px;padding:7px 16px;border-bottom:1px solid #F9FAFB;}
+.cm-row:last-child{border-bottom:none;}
+.cm-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.cm-name{font-size:12px;color:var(--text);flex:1;}
+.cm-track{flex:2;height:2px;background:var(--border);border-radius:2px;overflow:hidden;}
+.cm-fill{height:100%;border-radius:2px;}
+.cm-n{font-size:11px;font-weight:500;color:var(--text2);width:14px;text-align:right;}
+
+/* Route legend */
+.rl-row{display:flex;align-items:center;gap:8px;padding:8px 16px;cursor:pointer;transition:background .1s;}
+.rl-row:hover{background:var(--bg);}
+.rl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.rl-name{font-size:12px;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.rl-right{text-align:right;flex-shrink:0;}
+.rl-pct{font-size:11px;font-weight:600;}
+.rl-eta{font-size:10px;color:var(--text3);margin-top:1px;}
+
+/* ─── DRAWER ──────────────────────────────────────────── */
+#drawer{
+  position:absolute;inset:0;background:var(--surface);
+  display:flex;flex-direction:column;overflow:hidden;
+  opacity:0;transform:translateX(8px);pointer-events:none;
+  transition:opacity .22s,transform .22s;
+}
+#drawer.vis{opacity:1;transform:none;pointer-events:auto;}
+
+.dr-head{padding:16px 16px 12px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.dr-head-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
+.dr-status-label{font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:5px;}
+.dr-vessel{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-.25px;line-height:1.25;}
+.dr-sub{font-size:11px;color:var(--text2);margin-top:3px;}
+.dr-x{width:28px;height:28px;border-radius:var(--r-sm);border:1px solid var(--border);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2);flex-shrink:0;transition:all .12s;}
+.dr-x:hover{background:var(--bg);color:var(--text);}
+
+/* Route bar in drawer */
+.dr-route{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.dr-port{flex:0 0 auto;max-width:80px;}
+.dr-port-name{font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dr-port-date{font-size:9px;color:var(--text3);margin-top:2px;}
+.dr-port.right{text-align:right;}
+.dr-route-mid{flex:1;padding:0 4px;min-width:0;}
+.dr-route-top{display:flex;justify-content:space-between;margin-bottom:4px;}
+.dr-route-dep{font-size:9px;color:var(--text3);}
+.dr-route-pct{font-size:10px;font-weight:700;letter-spacing:-.2px;}
+.dr-route-eta-lbl{font-size:9px;color:var(--text3);}
+.dr-track{height:3px;background:var(--border);border-radius:2px;overflow:hidden;}
+.dr-fill{height:100%;border-radius:2px;transition:width .4s ease;}
+
+/* Drawer tabs */
+.dr-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;scrollbar-width:none;}
+.dr-tabs::-webkit-scrollbar{display:none;}
+.dr-tab{padding:10px 12px;font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;border:none;background:none;font-family:inherit;white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .12s,border-color .12s;flex-shrink:0;}
+.dr-tab:hover{color:var(--text);}
+.dr-tab.on{color:var(--accent);border-bottom-color:var(--accent);}
+
+.dr-body{flex:1;overflow-y:auto;}
+.dr-body::-webkit-scrollbar{width:3px;}
+.dr-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+.dr-panel{display:none;}
+.dr-panel.on{display:block;}
+
+/* Live stats in drawer */
+.live-stats-3{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--border);}
+.ls3{padding:14px 10px;text-align:center;border-right:1px solid var(--border);}
+.ls3:last-child{border-right:none;}
+.ls3-v{font-size:14px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;}
+.ls3-l{font-size:9px;color:var(--text3);margin-top:2px;text-transform:uppercase;letter-spacing:.3px;}
+.ls-sig{padding:7px 14px;font-size:10px;color:var(--text3);border-bottom:1px solid var(--border);}
+
+/* Section label inside drawer */
+.dr-sec{padding:14px 16px 6px;font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;}
+
+/* Info rows */
+.ir{display:flex;align-items:center;padding:7px 16px;border-bottom:1px solid #F9FAFB;}
+.ik{font-size:12px;color:var(--text2);flex:1;min-width:0;}
+.iv{font-size:12px;font-weight:500;color:var(--text);text-align:right;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.iv.ac{font-family:'SF Mono','Cascadia Code','Fira Mono',monospace;font-size:11px;}
+.iv.gr{color:var(--green);}
+.iv.rd{color:var(--red);}
+
+/* Timeline */
+#d-tl{padding:8px 0;}
+.stop{display:flex;gap:10px;padding:3px 16px;}
+.stop-tl{display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;padding-top:2px;}
+.stop-dot{width:13px;height:13px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;flex-shrink:0;}
+.stop-dot.done{background:var(--green);color:#fff;}
+.stop-dot.curr{background:var(--accent);color:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.15);}
+.stop-dot.pend{background:var(--border);border:1.5px solid #D0D5DD;}
+.stop-line{flex:1;width:1.5px;background:var(--border);margin:2px 0;min-height:14px;}
+.stop-line.done-line{background:var(--green);}
+.stop-body{padding-bottom:14px;flex:1;min-width:0;}
+.stop-name{font-size:12px;font-weight:500;color:var(--text);}
+.stop-name.dim{color:var(--text3);}
+.stop-detail{font-size:11px;color:var(--text3);margin-top:1px;line-height:1.5;}
+
+/* AIS empty */
+.ais-empty{padding:32px 16px;text-align:center;font-size:12px;color:var(--text3);line-height:1.8;}
+.ais-empty-ico{margin-bottom:12px;display:flex;justify-content:center;}
+
+/* Drawer actions */
+.dr-actions{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0;}
+.btn-ghost{flex:1;padding:8px 10px;border-radius:var(--r-sm);border:1px solid var(--border);background:transparent;font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;font-family:inherit;transition:all .12s;white-space:nowrap;}
+.btn-ghost:hover{background:var(--bg);color:var(--text);}
+.btn-danger{color:var(--red);border-color:var(--red-border);}
+.btn-danger:hover{background:var(--red-bg);}
+
+/* ─── MAP POPUPS ─────────────────────────────────────── */
+.maplibregl-popup-content{border-radius:var(--r-md)!important;padding:0!important;box-shadow:var(--sh-sm)!important;border:1px solid var(--border)!important;overflow:hidden;font-family:'Inter',system-ui,sans-serif!important;}
+.maplibregl-popup-tip{display:none!important;}
+.ptip{padding:12px;min-width:200px;}
+.ptip-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+.ptip-stripe{width:3px;height:28px;border-radius:2px;flex-shrink:0;}
+.ptip-vessel{font-size:13px;font-weight:600;color:var(--text);}
+.ptip-id{font-size:10px;color:var(--text3);margin-top:1px;}
+.ptip-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:9px;}
+.ptip-k{font-size:9px;color:var(--text3);margin-bottom:2px;text-transform:uppercase;letter-spacing:.3px;}
+.ptip-v{font-size:12px;font-weight:500;color:var(--text);}
+.ptip-foot{font-size:11px;color:var(--text2);line-height:1.5;}
+
+/* Ship marker */
+.ship-mk{cursor:pointer;}
+.ship-body{transition:transform .3s ease;}
+
+/* ─── COMMAND PALETTE ────────────────────────────────── */
+#cmd-pal{
+  position:fixed;inset:0;z-index:9000;
+  background:rgba(16,24,40,.45);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  display:none;align-items:flex-start;justify-content:center;padding-top:100px;
+}
+#cmd-pal.vis{display:flex;}
+.cmd-box{
+  width:520px;max-width:92vw;
+  background:#fff;border-radius:var(--r-lg);
+  box-shadow:0 24px 64px rgba(16,24,40,.18),0 0 0 1px var(--border);
+  overflow:hidden;
+}
+.cmd-search{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border);}
+.cmd-search svg{color:var(--text3);flex-shrink:0;}
+.cmd-input{flex:1;border:none;outline:none;font-size:15px;font-family:inherit;color:var(--text);}
+.cmd-input::placeholder{color:var(--text3);}
+.cmd-esc{font-size:10px;color:var(--text3);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 7px;flex-shrink:0;}
+.cmd-results{max-height:340px;overflow-y:auto;}
+.cmd-group-lbl{padding:8px 14px 4px;font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;}
+.cmd-item{display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;transition:background .08s;}
+.cmd-item:hover,.cmd-item.hi{background:var(--bg);}
+.cmd-ico{width:30px;height:30px;border-radius:var(--r-sm);background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text2);}
+.cmd-main{flex:1;min-width:0;}
+.cmd-name{font-size:13px;font-weight:500;color:var(--text);}
+.cmd-hint2{font-size:11px;color:var(--text3);margin-top:1px;}
+.cmd-tag{font-size:10px;color:var(--text3);flex-shrink:0;}
+.cmd-empty{padding:28px;text-align:center;font-size:13px;color:var(--text3);}
+.cmd-foot{padding:8px 14px;border-top:1px solid var(--border);display:flex;gap:14px;}
+.cmd-tip{font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px;}
+.cmd-tip kbd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-size:10px;font-family:inherit;}
+
+/* ─── MODAL ──────────────────────────────────────────── */
+#mo{position:fixed;inset:0;z-index:8000;background:rgba(16,24,40,.5);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;}
+#mo.vis{display:flex;}
+#modal{width:480px;max-width:93vw;max-height:88vh;overflow-y:auto;background:#fff;border-radius:var(--r-lg);box-shadow:0 24px 64px rgba(16,24,40,.16);}
+#mhdr{display:flex;align-items:flex-start;justify-content:space-between;padding:20px 20px 0;}
+.m-title{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-.2px;}
+.m-sub{font-size:12px;color:var(--text2);margin-top:3px;}
+.mcls{width:28px;height:28px;border-radius:var(--r-sm);border:1px solid var(--border);background:transparent;cursor:pointer;font-size:14px;color:var(--text2);display:flex;align-items:center;justify-content:center;}
+#mbody{padding:20px;}
+.ferr{display:none;padding:10px 12px;border-radius:var(--r-sm);background:var(--red-bg);border:1px solid var(--red-border);font-size:12px;color:var(--red);margin-bottom:14px;}
+.ferr.vis{display:block;}
+.fg{margin-bottom:14px;}
+.fgl{font-size:12px;font-weight:500;color:var(--text);display:block;margin-bottom:5px;}
+.req{color:var(--red);}
+.fgi,.mmsi-f{width:100%;padding:8px 11px;border-radius:var(--r-sm);border:1px solid var(--border);font-size:13px;font-family:inherit;color:var(--text);outline:none;transition:border-color .12s,box-shadow .12s;background:#fff;}
+.fgi:focus,.mmsi-f:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.1);}
+.fgh{font-size:11px;color:var(--text3);margin-top:4px;}
+textarea.fgi{resize:vertical;}
+.mftr{display:flex;justify-content:flex-end;gap:8px;padding:0 20px 20px;}
+.btn-cancel{padding:8px 16px;border-radius:var(--r-sm);border:1px solid var(--border);background:transparent;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;font-family:inherit;transition:background .12s;}
+.btn-cancel:hover{background:var(--bg);}
+.btn-submit{padding:8px 20px;border-radius:var(--r-sm);border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;transition:background .12s;}
+.btn-submit:hover{background:#1D4ED8;}
+
+/* ─── TOAST ──────────────────────────────────────────── */
+#feed{position:fixed;bottom:20px;left:20px;z-index:9500;display:flex;flex-direction:column;gap:8px;}
+.toast{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:#fff;border-radius:var(--r-md);border:1px solid var(--border);box-shadow:var(--sh-sm);font-size:12px;min-width:240px;max-width:320px;animation:toastSlide .22s ease;}
+@keyframes toastSlide{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:none}}
+.ti{flex-shrink:0;margin-top:1px;}
+.tt{font-size:12px;font-weight:600;color:var(--text);}
+.ts{font-size:11px;color:var(--text2);margin-top:2px;line-height:1.5;}
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">
+  <div class="ld-icon">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 20l3-9h14l3 9"/><path d="M6 11V7a6 6 0 0112 0v4"/><line x1="12" y1="3" x2="12" y2="7"/>
+    </svg>
+  </div>
+  <div class="ld-brand">ShipTrace</div>
+  <div class="ld-sub">Fleet Intelligence Platform</div>
+  <div class="ld-bar"><div class="ld-fill"></div></div>
+  <div class="ld-msg" id="ld-msg">Initializing map engine…</div>
+</div>
+
+<!-- Top Nav -->
+<header id="nav">
+  <div class="nav-logo">
+    <div class="nav-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 20l3-9h14l3 9"/><path d="M6 11V7a6 6 0 0112 0v4"/><line x1="12" y1="3" x2="12" y2="7"/>
+      </svg>
+    </div>
+    <span class="nav-brand">ShipTrace</span>
+  </div>
+
+  <div class="nav-divider"></div>
+
+  <div class="nav-search">
+    <div class="nav-search-box" onclick="openCmd()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="search" type="text" placeholder="Search shipment, vessel, PO…" readonly>
+      <span class="nav-kbd">⌘ K</span>
+    </div>
+  </div>
+
+  <div class="nav-right">
+    <div class="ais-chip">
+      <div class="ais-dot pending" id="ais-dot"></div>
+      <span id="ais-lbl">Connecting…</span>
+    </div>
+    <div id="clock"></div>
+    <button class="nav-icon-btn" title="Notifications" onclick="toast('info','All clear','No active alerts across your fleet.')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+    </button>
+    <button class="btn-primary" onclick="openModal()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Shipment
+    </button>
+  </div>
+</header>
+
+<!-- Main layout -->
+<div id="layout">
+
+  <!-- Left sidebar -->
+  <aside id="sidebar">
+    <div class="sb-head">
+      <div class="sb-section-label">Live Shipments</div>
+      <div class="sb-filters">
+        <button class="sf on" data-f="all">All</button>
+        <button class="sf" data-f="in_transit">Transit</button>
+        <button class="sf" data-f="arrived">Arrived</button>
+        <button class="sf" data-f="delayed">Delayed</button>
+      </div>
+    </div>
+    <div class="sb-meta">
+      <span class="sb-meta-lbl" id="sb-count-lbl">Vessels</span>
+      <span class="sb-meta-n" id="sb-count-n">0</span>
+    </div>
+    <div id="sb-list">
+      <!-- ship cards rendered by JS -->
+    </div>
+  </aside>
+
+  <!-- Map area -->
+  <div id="map-wrap">
+    <!-- KPI strip (overlays map top) -->
+    <div class="kpi-strip">
+      <div class="kpi"><div class="kpi-v" id="kv-tot">—</div><div class="kpi-l">Total</div></div>
+      <div class="kpi"><div class="kpi-v" id="kv-tr">—</div><div class="kpi-l">In Transit</div></div>
+      <div class="kpi"><div class="kpi-v" id="kv-dl" style="color:var(--red)">—</div><div class="kpi-l">Delayed</div></div>
+      <div class="kpi"><div class="kpi-v" id="kv-ot">—</div><div class="kpi-l">On-Time %</div></div>
+      <div class="kpi"><div class="kpi-v" id="kv-sp">—</div><div class="kpi-l">Avg Speed</div></div>
+      <div class="kpi"><div class="kpi-v" id="kv-live" style="color:var(--green)">—</div><div class="kpi-l">AIS Live</div></div>
+    </div>
+
+    <!-- AIS offline banner -->
+    <div id="ais-banner">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      AIS signal offline — check AISSTREAM_API_KEY in backend/.env
+    </div>
+
+    <!-- Map -->
+    <div id="map"></div>
+
+    <!-- Floating map controls -->
+    <div class="map-controls">
+      <div class="map-pill on" id="tb-routes" onclick="toggleRoutes()">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 3l7 7M3 21l7-7M17 3l-7 7M17 21l-7-7"/></svg>
+        Routes
+      </div>
+      <div class="map-pill" onclick="fitAll()">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+        Fit All
+      </div>
+    </div>
+  </div>
+
+  <!-- Right panel: fleet overview OR ship drawer -->
+  <div id="right-panel">
+
+    <!-- Fleet overview (default) -->
+    <div id="fleet-view">
+      <div class="fv-hdr">
+        <span class="fv-title">Fleet Overview</span>
+        <span class="fv-clock" id="rp-clock"></span>
+      </div>
+      <div class="fv-body">
+        <div class="stat-grid-2">
+          <div class="stat-cell-2">
+            <div class="stat-val" id="kv-tot2">—</div>
+            <div class="stat-lbl">Total</div>
+          </div>
+          <div class="stat-cell-2">
+            <div class="stat-val" id="kv-tr2">—</div>
+            <div class="stat-lbl">Transit</div>
+          </div>
+          <div class="stat-cell-2">
+            <div class="stat-val" id="kv-ar">—</div>
+            <div class="stat-lbl">Arrived</div>
+          </div>
+          <div class="stat-cell-2">
+            <div class="stat-val" id="kv-dl2" style="color:var(--red)">—</div>
+            <div class="stat-lbl">Delayed</div>
+          </div>
+        </div>
+        <div class="ot-row">
+          <span class="ot-label">On-Time Rate</span>
+          <div class="ot-track"><div class="ot-fill" id="ot-bar" style="width:0%"></div></div>
+          <span class="ot-pct" id="kv-ot2">—</span>
+        </div>
+        <div class="mini-stats">
+          <div class="mini-stat">
+            <div class="mini-stat-v" id="kv-sp2">—</div>
+            <div class="mini-stat-l">Avg Speed</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-stat-v" id="kv-live2" style="color:var(--green)">—</div>
+            <div class="mini-stat-l">AIS Live</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-stat-v" id="ais-sb" style="font-size:11px">—</div>
+            <div class="mini-stat-l">AIS Status</div>
+          </div>
+        </div>
+        <div class="fv-sec">Cargo Mix</div>
+        <div id="cargo-mix"></div>
+        <div class="fv-sec" style="margin-top:4px">Active Routes</div>
+        <div id="route-legend"></div>
+      </div>
+    </div>
+
+    <!-- Ship drawer (visible when ship selected) -->
+    <div id="drawer">
+      <div class="dr-head">
+        <div class="dr-head-row">
+          <div style="flex:1;min-width:0;">
+            <div class="dr-status-label" id="dr-status">—</div>
+            <div class="dr-vessel" id="dr-vessel">—</div>
+            <div class="dr-sub" id="dr-sub">—</div>
+          </div>
+          <button class="dr-x" onclick="closeDetail()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="dr-route">
+        <div class="dr-port">
+          <div class="dr-port-name" id="dr-orig"></div>
+          <div class="dr-port-date" id="dr-orig-dt"></div>
+        </div>
+        <div class="dr-route-mid">
+          <div class="dr-route-top">
+            <span class="dr-route-dep">Departed</span>
+            <span class="dr-route-pct" id="dr-pct">—</span>
+            <span class="dr-route-eta-lbl">ETA</span>
+          </div>
+          <div class="dr-track"><div class="dr-fill" id="dr-fill" style="width:0%"></div></div>
+        </div>
+        <div class="dr-port right">
+          <div class="dr-port-name" id="dr-dest"></div>
+          <div class="dr-port-date" id="dr-dest-dt"></div>
+        </div>
+      </div>
+
+      <div class="dr-tabs">
+        <button class="dr-tab on" data-tab="overview">Overview</button>
+        <button class="dr-tab" data-tab="journey">Journey</button>
+        <button class="dr-tab" data-tab="cargo">Cargo</button>
+        <button class="dr-tab" data-tab="vessel">Vessel</button>
+        <button class="dr-tab" data-tab="live">Live AIS</button>
+      </div>
+
+      <div class="dr-body">
+        <div class="dr-panel on" id="tab-overview">
+          <div class="live-stats-3">
+            <div class="ls3"><div class="ls3-v" id="sg-sog">—</div><div class="ls3-l">Speed</div></div>
+            <div class="ls3"><div class="ls3-v" id="sg-cog">—</div><div class="ls3-l">Heading</div></div>
+            <div class="ls3"><div class="ls3-v" id="sg-dist">—</div><div class="ls3-l">Remaining</div></div>
+          </div>
+          <div class="ls-sig" id="ls-upd">Last signal: —</div>
+          <div class="dr-sec">Cargo</div>
+          <div id="d-cargo-rows"></div>
+        </div>
+
+        <div class="dr-panel" id="tab-journey">
+          <div id="d-tl"></div>
+        </div>
+
+        <div class="dr-panel" id="tab-cargo">
+          <div class="dr-sec" style="padding-top:14px">Cargo Details</div>
+          <div id="d-cargo-rows2"></div>
+        </div>
+
+        <div class="dr-panel" id="tab-vessel">
+          <div class="dr-sec" style="padding-top:14px">Vessel Details</div>
+          <div id="d-vessel-rows"></div>
+        </div>
+
+        <div class="dr-panel" id="tab-live">
+          <div id="d-live-rows"></div>
+        </div>
+      </div>
+
+      <div class="dr-actions">
+        <button class="btn-ghost" id="btn-focus">Focus on Map</button>
+        <button class="btn-ghost btn-danger" id="btn-del">Remove</button>
+      </div>
+    </div>
+
+  </div><!-- #right-panel -->
+</div><!-- #layout -->
+
+<!-- Command Palette -->
+<div id="cmd-pal" onclick="if(event.target===this)closeCmdNow()">
+  <div class="cmd-box">
+    <div class="cmd-search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input class="cmd-input" id="cmd-input" placeholder="Search shipment, vessel, PO number…" oninput="renderCmd(this.value)">
+      <span class="cmd-esc">Esc</span>
+    </div>
+    <div class="cmd-results" id="cmd-results"></div>
+    <div class="cmd-foot">
+      <span class="cmd-tip"><kbd>↑↓</kbd> Navigate</span>
+      <span class="cmd-tip"><kbd>↵</kbd> Select</span>
+      <span class="cmd-tip"><kbd>Esc</kbd> Dismiss</span>
+    </div>
+  </div>
+</div>
+
+<!-- Add Shipment Modal -->
+<div id="mo">
+  <div id="modal">
+    <div id="mhdr">
+      <div><div class="m-title">Track New Shipment</div><div class="m-sub">Enter vessel MMSI to begin live AIS tracking</div></div>
+      <button class="mcls" onclick="closeModal()">✕</button>
+    </div>
+    <div id="mbody">
+      <div class="ferr" id="ferr"></div>
+      <div class="fg">
+        <label class="fgl">MMSI Number <span class="req">*</span></label>
+        <input class="mmsi-f" id="f-mmsi" type="text" placeholder="e.g. 353136000" maxlength="9">
+        <div class="fgh">9-digit vessel identifier — find it on MarineTraffic.com or from your freight forwarder.</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="fg"><label class="fgl">PO Number <span class="req">*</span></label><input class="fgi" id="f-po" placeholder="PO-2026-XXXX"></div>
+        <div class="fg"><label class="fgl">Cargo Type <span class="req">*</span></label>
+          <select class="fgi" id="f-type">
+            <option value="">Select type…</option>
+            <option value="machinery">Machinery / Equipment</option>
+            <option value="electronics">Electronics / Components</option>
+            <option value="chemicals">Chemicals / Pharma</option>
+            <option value="mixed">Mixed / General Cargo</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg"><label class="fgl">Cargo Description <span class="req">*</span></label><input class="fgi" id="f-cargo" placeholder="e.g. Industrial Machinery, 48 Units"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="fg"><label class="fgl">Quantity / Weight</label><input class="fgi" id="f-qty" placeholder="48 Units / 320 MT"></div>
+        <div class="fg"><label class="fgl">ETA</label><input class="fgi" id="f-eta" type="date"></div>
+      </div>
+      <div class="fg"><label class="fgl">Supplier</label><input class="fgi" id="f-supplier" placeholder="Supplier company name"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="fg"><label class="fgl">Origin Port</label><input class="fgi" id="f-origin" placeholder="Shanghai, China"></div>
+        <div class="fg"><label class="fgl">Destination</label><input class="fgi" id="f-dest" placeholder="Mumbai Warehouse"></div>
+      </div>
+      <div class="fg"><label class="fgl">Notes</label><textarea class="fgi" id="f-notes" rows="2" placeholder="Special handling, temperature requirements…"></textarea></div>
+    </div>
+    <div class="mftr">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-submit" id="btn-s" onclick="saveShipment()">Start Tracking</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast feed -->
+<div id="feed"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  CONFIG
+// ══════════════════════════════════════════════════════════
+const API='/api';const POLL=10000;
+
+// ══════════════════════════════════════════════════════════
+//  PORT & WAYPOINT DATABASE  [longitude, latitude]
+// ══════════════════════════════════════════════════════════
+const P={
+  shanghai:[121.47,31.23],tianjin:[117.70,38.97],qingdao:[120.33,36.07],
+  busan:[129.07,35.10],singapore:[103.82,1.27],port_klang:[101.38,2.97],
+  colombo:[79.85,6.93],chennai:[80.29,13.08],mumbai:[72.84,18.93],
+  nhava_sheva:[72.94,18.88],mundra:[69.67,22.84],delhi:[77.10,28.52],
+  bangalore:[77.59,12.97],hyderabad:[78.49,17.38],jebel_ali:[55.07,25.00],
+  jeddah:[39.15,21.47],suez_n:[32.30,31.27],suez_s:[32.55,29.97],
+  algeciras:[-5.45,36.13],rotterdam:[4.17,51.90],hamburg:[9.95,53.54],
+};
+const W={
+  sc_sea:[112.00,15.00],malacca:[103.30,1.20],andaman:[94.00,10.00],
+  bay_beng:[87.00,12.00],srilanka:[80.50,8.00],arabian:[64.00,18.00],
+  hormuz:[56.50,26.50],gulf_aden:[50.00,12.00],red_sea:[38.00,20.00],
+  med_e:[26.00,35.00],med_w:[10.00,38.00],english_ch:[-2.00,49.50],n_sea:[3.00,54.00],
+};
+
+const SHIP_ROUTES={
+  '353136000':[P.shanghai,[121.8,25.0],W.sc_sea,P.singapore,W.andaman,W.bay_beng,W.srilanka,[74.5,16.5],P.mumbai],
+  '255805734':[P.rotterdam,W.n_sea,W.english_ch,P.algeciras,W.med_w,W.med_e,P.suez_n,P.suez_s,W.red_sea,P.jeddah,W.gulf_aden,W.arabian,P.mumbai,P.colombo,P.chennai],
+  '219019791':[P.hamburg,W.n_sea,W.english_ch,P.algeciras,W.med_w,W.med_e,P.suez_n,P.suez_s,W.red_sea,W.gulf_aden,W.arabian,P.mumbai],
+  '477931700':[P.tianjin,[122.0,33.0],P.shanghai,[121.5,26.0],W.sc_sea,P.singapore,W.andaman,W.bay_beng,W.srilanka,W.arabian,P.mundra,P.nhava_sheva],
+  '228372500':[P.jebel_ali,W.hormuz,[61.0,22.0],W.arabian,[69.0,20.0],P.mumbai],
+};
+
+const SHIP_COLORS={
+  '353136000':'#3B82F6',
+  '255805734':'#EF4444',
+  '219019791':'#F59E0B',
+  '477931700':'#10B981',
+  '228372500':'#8B5CF6',
+};
+function shipColor(s){return SHIP_COLORS[s.mmsi]||'#3B82F6';}
+
+const LOCS=[
+  {n:'Shanghai',c:P.shanghai,t:'port'},{n:'Singapore',c:P.singapore,t:'port'},
+  {n:'Jebel Ali',c:P.jebel_ali,t:'port'},{n:'Rotterdam',c:P.rotterdam,t:'port'},
+  {n:'Hamburg',c:P.hamburg,t:'port'},{n:'Colombo',c:P.colombo,t:'port'},
+  {n:'Tianjin',c:P.tianjin,t:'port'},{n:'Mumbai',c:P.mumbai,t:'port'},
+  {n:'Suez Canal',c:[32.40,30.60],t:'chokepoint'},
+  {n:'Malacca Strait',c:W.malacca,t:'chokepoint'},
+  {n:'Strait of Hormuz',c:W.hormuz,t:'chokepoint'},
+  {n:'Gulf of Aden',c:W.gulf_aden,t:'chokepoint'},
+  {n:'Mumbai Warehouse',c:[72.94,18.88],t:'warehouse'},
+  {n:'Bangalore Warehouse',c:P.bangalore,t:'warehouse'},
+  {n:'Delhi Distribution',c:P.delhi,t:'warehouse'},
+];
+
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+let SHIPS=[],SEL=null,CF='all',CQ='',AIS_OK=false;
+let MAP_READY=false,ROUTES_VIS=true,dtab='overview';
+const MARKERS={};
+
+// ══════════════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════════════
+const CARGO_META={
+  machinery:  {label:'Machinery',   col:'#F97316'},
+  electronics:{label:'Electronics', col:'#3B82F6'},
+  chemicals:  {label:'Chemicals',   col:'#8B5CF6'},
+  mixed:      {label:'Mixed Cargo', col:'#6B7280'},
+};
+const ci=t=>CARGO_META[t]||CARGO_META.mixed;
+const SC={in_transit:'#2563EB',arrived:'#16A34A',delayed:'#EF4444',loading:'#F59E0B'};
+const SL={in_transit:'In Transit',arrived:'Arrived',delayed:'Delayed',loading:'Loading'};
+const NS={0:'Underway (GPS)',1:'Anchored',2:'Not Under Command',3:'Restricted Maneuverability',5:'Moored',8:'Sailing',15:'Undefined'};
+const dstatus=s=>s.status||(s.live?.nav_status===1||s.live?.nav_status===5?'arrived':'in_transit');
+const scol=s=>SC[s]||'#98A2B3';
+const slab=s=>SL[s]||s;
+
+function fDate(d){if(!d)return'—';return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+function fKnots(v){return v!=null&&v>=0?v.toFixed(1)+' kn':'—';}
+function fHdg(v){return v!=null&&v!==511?Math.round(v)+'°':'—';}
+function fCoord(v){return v!=null?v.toFixed(4)+'°':'—';}
+
+function fETA(s){
+  const st=dstatus(s);
+  if(st==='arrived')return{val:'Arrived',cls:'gr'};
+  if(st==='loading')return{val:'Pending',cls:''};
+  if(!s.eta)return{val:'—',cls:''};
+  const d=new Date(s.eta)-Date.now();
+  if(d<0)return{val:'Overdue',cls:'rd'};
+  const dy=Math.floor(d/864e5),hr=Math.floor((d%864e5)/36e5);
+  return{val:dy>0?`${dy}d ${hr}h`:`${hr}h`,cls:dy<2&&dy>=0?'rd':''};
+}
+
+function estProg(s){
+  const st=dstatus(s);if(st==='arrived')return 1;if(st==='loading')return 0;
+  if(!s.created_at||!s.eta)return 0.5;
+  const t=(Date.now()-new Date(s.created_at))/(new Date(s.eta)-new Date(s.created_at));
+  return Math.max(0.03,Math.min(0.97,t));
+}
+function ptd([x1,y1],[x2,y2]){return Math.sqrt((x2-x1)**2+(y2-y1)**2);}
+
+function progOnRoute(wps,lp){
+  const lens=[];let tot=0;
+  for(let i=0;i<wps.length-1;i++){const l=ptd(wps[i],wps[i+1]);lens.push(l);tot+=l;}
+  let best=0,minD=Infinity,cum=0;
+  for(let i=0;i<wps.length-1;i++){
+    const[ax,ay]=wps[i],[bx,by]=wps[i+1],dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
+    const t=len2<1e-10?0:Math.max(0,Math.min(1,((lp[0]-ax)*dx+(lp[1]-ay)*dy)/len2));
+    const px=ax+t*dx,py=ay+t*dy,d=ptd([px,py],lp);
+    if(d<minD){minD=d;best=cum+t*lens[i];}
+    cum+=lens[i];
+  }
+  return tot>0?Math.max(0.02,Math.min(0.98,best/tot)):0.5;
+}
+
+function geodesicSeg(p1,p2,steps=50){
+  const R=Math.PI/180,D=180/Math.PI;
+  const[lo1,la1]=[p1[0]*R,p1[1]*R],[lo2,la2]=[p2[0]*R,p2[1]*R];
+  const d=Math.acos(Math.max(-1,Math.min(1,Math.sin(la1)*Math.sin(la2)+Math.cos(la1)*Math.cos(la2)*Math.cos(lo2-lo1))));
+  if(d<0.001)return[p1,p2];
+  const sd=Math.sin(d),pts=[];
+  for(let i=0;i<=steps;i++){
+    const t=i/steps,A=Math.sin((1-t)*d)/sd,B=Math.sin(t*d)/sd;
+    const x=A*Math.cos(la1)*Math.cos(lo1)+B*Math.cos(la2)*Math.cos(lo2);
+    const y=A*Math.cos(la1)*Math.sin(lo1)+B*Math.cos(la2)*Math.sin(lo2);
+    const z=A*Math.sin(la1)+B*Math.sin(la2);
+    pts.push([Math.atan2(y,x)*D,Math.atan2(z,Math.sqrt(x*x+y*y))*D]);
+  }
+  return pts;
+}
+function smoothRoute(wps,steps=40){
+  if(!wps||wps.length<2)return wps||[];
+  const out=[];
+  for(let i=0;i<wps.length-1;i++){const seg=geodesicSeg(wps[i],wps[i+1],steps);if(i<wps.length-2)seg.pop();out.push(...seg);}
+  return out;
+}
+function routeDistNm(wps){
+  const R=6371*0.539957;let d=0;
+  for(let i=0;i<wps.length-1;i++){
+    const[lo1,la1]=wps[i].map(x=>x*Math.PI/180),[lo2,la2]=wps[i+1].map(x=>x*Math.PI/180);
+    const a=Math.sin((la2-la1)/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin((lo2-lo1)/2)**2;
+    d+=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  }
+  return d;
+}
+function splitRoute(wps,prog){
+  const n=wps.length;
+  const tot=wps.slice(0,-1).reduce((s,p,i)=>s+ptd(p,wps[i+1]),0);
+  const target=tot*prog;let cum=0;
+  for(let i=0;i<n-1;i++){
+    const sl=ptd(wps[i],wps[i+1]);
+    if(cum+sl>=target){
+      const t2=(target-cum)/sl;
+      const mid=[wps[i][0]+t2*(wps[i+1][0]-wps[i][0]),wps[i][1]+t2*(wps[i+1][1]-wps[i][1])];
+      return{done:[...wps.slice(0,i+1),mid],ahead:[mid,...wps.slice(i+1)]};
+    }
+    cum+=sl;
+  }
+  return{done:wps,ahead:[]};
+}
+
+function autoRoute(s){
+  const o=matchPort(s.origin_port),d=matchPort(s.dest_warehouse||s.dest_port);
+  if(!o||!d)return null;
+  if(window._srReady&&typeof window.searoute==='function'){
+    try{const r=window.searoute(o,d);const coords=r?.features?.[0]?.geometry?.coordinates;if(coords&&coords.length>1)return coords;}catch{}
+  }
+  const[ox]=o;
+  if(ox>100&&d[0]<80) return[o,W.sc_sea,P.singapore,W.andaman,W.bay_beng,W.srilanka,d];
+  if(ox<20&&d[0]<80)  return[o,W.english_ch,P.algeciras,W.med_w,W.med_e,P.suez_n,P.suez_s,W.red_sea,W.gulf_aden,W.arabian,d];
+  if(ox>40&&ox<65&&d[0]<80) return[o,W.hormuz,W.arabian,d];
+  return[o,d];
+}
+function matchPort(str){
+  if(!str)return null;const s=str.toLowerCase();
+  const KV={shanghai:P.shanghai,tianjin:P.tianjin,busan:P.busan,qingdao:P.qingdao,singapore:P.singapore,colombo:P.colombo,mumbai:P.mumbai,nhava:P.nhava_sheva,mundra:P.mundra,chennai:P.chennai,delhi:P.delhi,bangalore:P.bangalore,hyderabad:P.hyderabad,'jebel ali':P.jebel_ali,jebel:P.jebel_ali,dubai:P.jebel_ali,rotterdam:P.rotterdam,hamburg:P.hamburg,antwerp:P.hamburg};
+  for(const[k,v]of Object.entries(KV))if(s.includes(k))return v;
+  return null;
+}
+function getRoute(s){return SHIP_ROUTES[s.mmsi]||autoRoute(s);}
+
+// ══════════════════════════════════════════════════════════
+//  MAP
+// ══════════════════════════════════════════════════════════
+const map=new maplibregl.Map({
+  container:'map',style:'https://tiles.openfreemap.org/styles/liberty',
+  center:[68,18],zoom:3.2,attributionControl:false,antialias:true,
+});
+map.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
+map.addControl(new maplibregl.ScaleControl({unit:'metric'}),'bottom-left');
+map.addControl(new maplibregl.AttributionControl({compact:true}),'bottom-right');
+
+function onMapReady(){
+  if(MAP_READY)return;MAP_READY=true;
+  document.getElementById('ld-msg').textContent='Connected to AIS stream…';
+  initMapLayers();
+  SHIPS.forEach(s=>{if(s.live?.latitude)addOrUpdateMarker(s);});
+  refreshRoutes();
+}
+map.on('load',onMapReady);map.on('style.load',onMapReady);
+(function poll(){setTimeout(()=>{if(!MAP_READY&&map.getStyle())onMapReady();else if(!MAP_READY)poll();},400);})();
+
+function initMapLayers(){
+  map.addSource('locs',{type:'geojson',data:{type:'FeatureCollection',features:
+    LOCS.map(l=>({type:'Feature',properties:{name:l.n,type:l.t},geometry:{type:'Point',coordinates:l.c}}))}});
+
+  map.addLayer({id:'wh-ring',type:'circle',source:'locs',filter:['==',['get','type'],'warehouse'],
+    paint:{'circle-radius':11,'circle-color':'rgba(22,163,74,.08)','circle-stroke-width':1.5,'circle-stroke-color':'#16A34A','circle-stroke-opacity':.5}});
+  map.addLayer({id:'wh-dot',type:'circle',source:'locs',filter:['==',['get','type'],'warehouse'],
+    paint:{'circle-radius':4,'circle-color':'#16A34A'}});
+  map.addLayer({id:'port-dot',type:'circle',source:'locs',filter:['==',['get','type'],'port'],
+    paint:{'circle-radius':4,'circle-color':'#fff','circle-stroke-width':1.5,'circle-stroke-color':'#94A3B8','circle-stroke-opacity':.7}});
+  map.addLayer({id:'cp-outer',type:'circle',source:'locs',filter:['==',['get','type'],'chokepoint'],
+    paint:{'circle-radius':9,'circle-color':'rgba(245,158,11,.08)','circle-stroke-width':1,'circle-stroke-color':'#F59E0B','circle-stroke-opacity':.45}});
+  map.addLayer({id:'cp-dot',type:'circle',source:'locs',filter:['==',['get','type'],'chokepoint'],
+    paint:{'circle-radius':3,'circle-color':'rgba(0,0,0,0)','circle-stroke-width':1.5,'circle-stroke-color':'#F59E0B'}});
+  map.addLayer({id:'loc-labels',type:'symbol',source:'locs',minzoom:3.5,
+    layout:{'text-field':['get','name'],'text-size':['interpolate',['linear'],['zoom'],3.5,9,6,12],'text-offset':[0,1.1],'text-anchor':'top','text-optional':true,'text-font':['Noto Sans Regular']},
+    paint:{'text-color':['case',['==',['get','type'],'warehouse'],'#16A34A',['==',['get','type'],'chokepoint'],'#D97706','#64748B'],'text-halo-color':'rgba(255,255,255,.95)','text-halo-width':1.5}});
+
+  map.addSource('routes',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+
+  map.addLayer({id:'r-done',type:'line',source:'routes',
+    filter:['all',['==',['get','portion'],'done'],['==',['get','selected'],false]],
+    layout:{'line-cap':'round','line-join':'round'},
+    paint:{'line-color':['get','color'],'line-width':1.5,'line-opacity':.5}});
+  map.addLayer({id:'r-ahead',type:'line',source:'routes',
+    filter:['all',['==',['get','portion'],'ahead'],['==',['get','selected'],false]],
+    layout:{'line-cap':'butt','line-join':'round'},
+    paint:{'line-color':['get','color'],'line-width':1,'line-dasharray':[3,4],'line-opacity':.25}});
+  map.addLayer({id:'r-sel',type:'line',source:'routes',
+    filter:['all',['==',['get','selected'],true],['==',['get','portion'],'done']],
+    layout:{'line-cap':'round','line-join':'round'},
+    paint:{'line-color':['get','color'],'line-width':2.5,'line-opacity':1}});
+  map.addLayer({id:'r-sel-ah',type:'line',source:'routes',
+    filter:['all',['==',['get','selected'],true],['==',['get','portion'],'ahead']],
+    layout:{'line-cap':'butt','line-join':'round'},
+    paint:{'line-color':['get','color'],'line-width':1.5,'line-dasharray':[4,4],'line-opacity':.5}});
+
+  ['r-done','r-ahead'].forEach(lid=>{
+    map.on('click',lid,e=>{const id=e.features[0]?.properties?.id;if(id)pickShip(id);});
+    map.on('mouseenter',lid,()=>{map.getCanvas().style.cursor='pointer';});
+    map.on('mouseleave',lid,()=>{map.getCanvas().style.cursor='';});
+  });
+}
+
+function refreshRoutes(){
+  if(!MAP_READY)return;
+  const feats=[];
+  SHIPS.forEach(s=>{
+    const wps=getRoute(s);if(!wps||wps.length<2)return;
+    const lp=s.live?.latitude?[s.live.longitude,s.live.latitude]:null;
+    const prog=lp?progOnRoute(wps,lp):estProg(s);
+    const{done,ahead}=splitRoute(wps,prog);
+    const col=shipColor(s),sel=(SEL===s.id);
+    const doneSm=smoothRoute(done),aheadSm=smoothRoute(ahead);
+    if(doneSm.length>=2)  feats.push({type:'Feature',properties:{id:s.id,portion:'done', color:col,selected:sel},geometry:{type:'LineString',coordinates:doneSm}});
+    if(aheadSm.length>=2) feats.push({type:'Feature',properties:{id:s.id,portion:'ahead',color:col,selected:sel},geometry:{type:'LineString',coordinates:aheadSm}});
+  });
+  const src=map.getSource('routes');
+  if(src)src.setData({type:'FeatureCollection',features:feats});
+}
+
+function toggleRoutes(){
+  ROUTES_VIS=!ROUTES_VIS;
+  const v=ROUTES_VIS?'visible':'none';
+  ['r-done','r-ahead','r-sel','r-sel-ah'].forEach(id=>{try{map.setLayoutProperty(id,'visibility',v);}catch{}});
+  document.getElementById('tb-routes').classList.toggle('on',ROUTES_VIS);
+}
+
+function fitAll(){
+  if(!MAP_READY)return;
+  map.flyTo({center:[72,18],zoom:3.2,duration:900});
+}
+
+// ══════════════════════════════════════════════════════════
+//  MARKERS
+// ══════════════════════════════════════════════════════════
+function shipSVG(col){
+  return`<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="11" cy="11" r="10" fill="#fff" opacity=".92"/>
+    <circle cx="11" cy="11" r="7" fill="${col}"/>
+    <polygon points="11,4 14.5,15 11,12.5 7.5,15" fill="#fff" opacity=".9"/>
+  </svg>`;
+}
+function mkMarkerEl(hdg,col){
+  const el=document.createElement('div');el.className='ship-mk';
+  const body=document.createElement('div');body.className='ship-body';
+  body.style.transform=`rotate(${hdg}deg)`;
+  body.innerHTML=shipSVG(col);
+  el.appendChild(body);return el;
+}
+
+function addOrUpdateMarker(s){
+  if(!MAP_READY)return;
+  const l=s.live;if(!l?.latitude||!l?.longitude)return;
+  const lng=l.longitude,lat=l.latitude;
+  const hdg=(l.true_heading!=null&&l.true_heading!==511)?l.true_heading:(l.cog||0);
+  const col=shipColor(s);
+  if(MARKERS[s.mmsi]){
+    MARKERS[s.mmsi].marker.setLngLat([lng,lat]);
+    const body=MARKERS[s.mmsi].el.querySelector('.ship-body');
+    if(body)body.style.transform=`rotate(${hdg}deg)`;
+    MARKERS[s.mmsi].marker.getPopup().setHTML(popupHTML(s));
+  }else{
+    const el=mkMarkerEl(hdg,col);
+    const popup=new maplibregl.Popup({offset:[0,-14],closeButton:false,maxWidth:'260px'}).setHTML(popupHTML(s));
+    const mk=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([lng,lat]).setPopup(popup).addTo(map);
+    el.addEventListener('click',()=>pickShip(s.id));
+    el.addEventListener('mouseenter',()=>mk.getPopup().addTo(map));
+    el.addEventListener('mouseleave',()=>mk.getPopup().remove());
+    MARKERS[s.mmsi]={marker:mk,el};
+  }
+}
+
+function popupHTML(s){
+  const l=s.live||{},col=shipColor(s),eta=fETA(s);
+  return`<div class="ptip">
+    <div class="ptip-head">
+      <div class="ptip-stripe" style="background:${col}"></div>
+      <div><div class="ptip-vessel">${l.name||s.vessel_name||('MMSI '+s.mmsi)}</div><div class="ptip-id">${s.id} · ${s.po_number||'—'}</div></div>
+    </div>
+    <div class="ptip-grid">
+      <div><div class="ptip-k">Speed</div><div class="ptip-v">${fKnots(l.sog)}</div></div>
+      <div><div class="ptip-k">Heading</div><div class="ptip-v">${fHdg(l.true_heading)}</div></div>
+      <div><div class="ptip-k">ETA</div><div class="ptip-v" style="${eta.cls==='rd'?'color:#EF4444':''}">${eta.val}</div></div>
+    </div>
+    <div class="ptip-foot">${s.cargo||'—'}<br>${s.origin_port||'—'} → ${s.dest_warehouse||'—'}</div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════
+//  DATA
+// ══════════════════════════════════════════════════════════
+async function loadShipments(){
+  try{
+    const r=await fetch(`${API}/shipments`);if(!r.ok)throw 0;
+    SHIPS=await r.json();processShips();
+  }catch{setAISStatus('offline');renderSidebar();updateStats();}
+}
+function processShips(){
+  SHIPS.forEach(s=>{if(s.live?.latitude)addOrUpdateMarker(s);});
+  refreshRoutes();renderSidebar();updateStats();renderCargoMix();renderRouteLegend();
+  if(SEL){const s=SHIPS.find(x=>x.id===SEL);if(s){syncDetail(s);buildLiveTab(s);}}
+}
+
+let sse=null;
+function connectSSE(){
+  if(sse)sse.close();
+  sse=new EventSource(`${API}/stream`);
+  sse.onopen=()=>setAISStatus('connected');
+  sse.onmessage=(e)=>{
+    try{
+      const m=JSON.parse(e.data);
+      if(m.type==='ais_status')setAISStatus(m.connected?'connected':'offline');
+      if(m.type==='position'||m.type==='static'){
+        const s=SHIPS.find(x=>x.mmsi===m.data.mmsi);
+        if(s){
+          s.live={...(s.live||{}),...m.data};
+          addOrUpdateMarker(s);refreshRoutes();
+          document.getElementById('kv-live').textContent=SHIPS.filter(x=>x.live?.latitude).length;
+          updateStats();renderSidebar();renderRouteLegend();
+          if(SEL===s.id){syncDetail(s);buildLiveTab(s);}
+        }
+      }
+    }catch{}
+  };
+  sse.onerror=()=>{setAISStatus('pending');setTimeout(connectSSE,5000);};
+}
+
+function setAISStatus(st){
+  AIS_OK=st==='connected';
+  const cls='ais-dot '+(st==='connected'?'live':st==='offline'?'offline':'pending');
+  document.getElementById('ais-dot').className=cls;
+  const lbl={connected:'AIS Live',offline:'AIS Offline',pending:'Connecting…'}[st]||'…';
+  document.getElementById('ais-lbl').textContent=lbl;
+  document.getElementById('ais-sb').textContent=lbl;
+  document.getElementById('ais-banner').classList.toggle('vis',st==='offline');
+}
+
+// ══════════════════════════════════════════════════════════
+//  SIDEBAR
+// ══════════════════════════════════════════════════════════
+function renderSidebar(){
+  const el=document.getElementById('sb-list');
+  const list=SHIPS.filter(s=>{
+    const st=dstatus(s);
+    if(CF!=='all'&&st!==CF)return false;
+    if(!CQ)return true;
+    const q=CQ.toLowerCase();
+    return[s.po_number,s.cargo,s.supplier,s.id,s.live?.name,s.vessel_name].some(v=>v&&v.toLowerCase().includes(q));
+  });
+  const n=document.getElementById('sb-count-n');if(n)n.textContent=list.length;
+  if(!list.length){el.innerHTML=`<div class="sb-empty">No shipments match<br>your current filter.</div>`;return;}
+  el.innerHTML=list.map(s=>{
+    const col=shipColor(s),eta=fETA(s),st=dstatus(s);
+    const vname=s.live?.name||s.vessel_name||('MMSI '+s.mmsi);
+    const prog=Math.round(estProg(s)*100);
+    const origShort=(s.origin_port||'—').split(',')[0];
+    const destShort=(s.dest_warehouse||'—').split(' ')[0];
+    return`<div class="sc${SEL===s.id?' on':''}" onclick="pickShip('${s.id}')">
+      <div class="sc-top">
+        <span class="sc-name">${vname}</span>
+        <span class="sc-badge ${st}">${slab(st)}</span>
+      </div>
+      <div class="sc-route">${origShort} → ${destShort}</div>
+      <div class="sc-bar"><div class="sc-fill" style="width:${prog}%;background:${col}"></div></div>
+      <div class="sc-foot">
+        <span class="sc-pct">${prog}%</span>
+        <span class="sc-eta-lbl ${eta.cls}">ETA ${eta.val}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════
+//  STATS
+// ══════════════════════════════════════════════════════════
+function updateStats(){
+  const t=SHIPS.length,tr=SHIPS.filter(s=>dstatus(s)==='in_transit').length;
+  const ar=SHIPS.filter(s=>dstatus(s)==='arrived').length,dl=SHIPS.filter(s=>dstatus(s)==='delayed').length;
+  const spd=SHIPS.filter(s=>s.live?.sog>0);
+  const ot=t?Math.round((t-dl)/t*100):0;
+  const avgSpd=spd.length?(spd.reduce((a,s)=>a+s.live.sog,0)/spd.length).toFixed(1)+' kn':'—';
+  const live=SHIPS.filter(s=>s.live?.latitude).length;
+  // KPI strip
+  document.getElementById('kv-tot').textContent=t;
+  document.getElementById('kv-tr').textContent=tr;
+  document.getElementById('kv-dl').textContent=dl;
+  document.getElementById('kv-ot').textContent=t?ot+'%':'—';
+  document.getElementById('kv-sp').textContent=avgSpd;
+  document.getElementById('kv-live').textContent=live;
+  // Fleet view
+  document.getElementById('kv-tot2').textContent=t;
+  document.getElementById('kv-tr2').textContent=tr;
+  document.getElementById('kv-ar').textContent=ar;
+  document.getElementById('kv-dl2').textContent=dl;
+  document.getElementById('kv-ot2').textContent=t?ot+'%':'—';
+  document.getElementById('ot-bar').style.width=ot+'%';
+  document.getElementById('kv-sp2').textContent=avgSpd;
+  document.getElementById('kv-live2').textContent=live;
+}
+
+function renderCargoMix(){
+  const types={};SHIPS.forEach(s=>{const t=s.cargo_type||'mixed';types[t]=(types[t]||0)+1;});
+  const total=SHIPS.length||1;
+  document.getElementById('cargo-mix').innerHTML=Object.entries(types).map(([t,n])=>{
+    const m=ci(t);
+    return`<div class="cm-row">
+      <div class="cm-dot" style="background:${m.col}"></div>
+      <div class="cm-name">${m.label}</div>
+      <div class="cm-track"><div class="cm-fill" style="width:${n/total*100}%;background:${m.col}"></div></div>
+      <div class="cm-n">${n}</div>
+    </div>`;
+  }).join('')||'<div style="color:var(--text3);font-size:12px;padding:10px 16px">No data</div>';
+}
+
+function renderRouteLegend(){
+  document.getElementById('route-legend').innerHTML=SHIPS.map(s=>{
+    const col=shipColor(s);
+    const vname=s.live?.name||s.vessel_name||('MMSI '+s.mmsi);
+    const prog=Math.round(estProg(s)*100);
+    const eta=fETA(s);
+    return`<div class="rl-row" onclick="pickShip('${s.id}')">
+      <div class="rl-dot" style="background:${col}"></div>
+      <div>
+        <div class="rl-name">${vname}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:1px">${s.origin_port?.split(',')[0]||'—'} → ${(s.dest_warehouse||'—').split(' ')[0]}</div>
+      </div>
+      <div class="rl-right">
+        <div class="rl-pct" style="color:${col}">${prog}%</div>
+        <div class="rl-eta">${eta.val}</div>
+      </div>
+    </div>`;
+  }).join('')||'<div style="color:var(--text3);font-size:12px;padding:10px 16px">No ships</div>';
+}
+
+// ══════════════════════════════════════════════════════════
+//  DETAIL DRAWER
+// ══════════════════════════════════════════════════════════
+function pickShip(id){
+  SEL=id;renderSidebar();refreshRoutes();
+  const s=SHIPS.find(x=>x.id===id);if(!s)return;
+  const col=shipColor(s),st=dstatus(s);
+  const vname=s.live?.name||s.vessel_name||('MMSI '+s.mmsi);
+
+  // Header
+  document.getElementById('dr-status').textContent=slab(st).toUpperCase();
+  document.getElementById('dr-vessel').textContent=vname;
+  document.getElementById('dr-sub').textContent=`${ci(s.cargo_type).label} · MMSI ${s.mmsi} · ${s.po_number||'—'}`;
+
+  // Route bar
+  const pct=Math.round(estProg(s)*100);
+  document.getElementById('dr-orig').textContent=(s.origin_port||'Origin').split(',')[0];
+  document.getElementById('dr-orig-dt').textContent=s.created_at?fDate(s.created_at):'—';
+  document.getElementById('dr-dest').textContent=(s.dest_warehouse||'Destination').split(' ').slice(0,2).join(' ');
+  document.getElementById('dr-dest-dt').textContent=s.eta?fDate(s.eta):'—';
+  document.getElementById('dr-pct').textContent=pct+'%';
+  document.getElementById('dr-pct').style.color=col;
+  document.getElementById('dr-fill').style.width=pct+'%';
+  document.getElementById('dr-fill').style.background=col;
+
+  syncDetail(s);
+  buildTimeline(s);buildCargoTab(s);buildVesselTab(s);buildLiveTab(s);
+  switchDTab('overview');
+
+  // Map focus
+  const wps=getRoute(s);
+  if(s.live?.latitude&&MAP_READY){
+    map.flyTo({center:[s.live.longitude,s.live.latitude],zoom:Math.max(map.getZoom(),4.5),duration:1100,essential:true});
+  }else if(wps&&MAP_READY){
+    const b=new maplibregl.LngLatBounds();
+    wps.forEach(c=>{if(c&&c.length===2&&!isNaN(c[0])&&!isNaN(c[1]))b.extend(c);});
+    if(!b.isEmpty())map.fitBounds(b,{padding:{top:72,right:24,bottom:40,left:24},maxZoom:5.5,duration:1100});
+  }
+
+  document.getElementById('btn-focus').onclick=()=>{
+    if(wps&&MAP_READY){const b=new maplibregl.LngLatBounds();wps.forEach(c=>{if(c&&c.length===2)b.extend(c);});if(!b.isEmpty())map.fitBounds(b,{padding:{top:72,right:24,bottom:40,left:24},maxZoom:5.5,duration:900});}
+  };
+  document.getElementById('btn-del').onclick=()=>deleteShip(id);
+
+  document.getElementById('fleet-view').classList.add('hidden');
+  document.getElementById('drawer').classList.add('vis');
+}
+
+function syncDetail(s){
+  const lp=s.live?.latitude?[s.live.longitude,s.live.latitude]:null;
+  const wps=getRoute(s);
+  const prog=lp&&wps?progOnRoute(wps,lp):estProg(s);
+  const l=s.live||{};
+  document.getElementById('sg-sog').textContent=l.sog!=null?l.sog.toFixed(1)+' kn':'—';
+  document.getElementById('sg-cog').textContent=l.cog!=null?Math.round(l.cog)+'°':'—';
+  const ahead=(wps&&lp)?splitRoute(wps,prog).ahead:[];
+  const nm=ahead.length>=2?routeDistNm(ahead):null;
+  document.getElementById('sg-dist').textContent=nm?Math.round(nm).toLocaleString()+' nm':'—';
+  const sigEl=document.getElementById('ls-upd');
+  if(l.last_seen){
+    const diff=Math.round((Date.now()-new Date(l.last_seen).getTime())/60000);
+    sigEl.textContent=diff<2?'Last signal: just now':diff<60?`Last signal: ${diff} min ago`:`Last signal: ${Math.round(diff/60)}h ago`;
+  }else{
+    sigEl.textContent='Last signal: —';
+  }
+}
+
+function buildTimeline(s){
+  const stops=routeStops(s),prog=estProg(s),n=stops.length;
+  document.getElementById('d-tl').innerHTML=stops.map((stop,i)=>{
+    const f=i/(n-1||1);
+    const done=dstatus(s)==='arrived'||(f<prog-0.05);
+    const curr=!done&&(f<=prog+0.15);
+    const cls=done?'done':curr?'curr':'pend';
+    return`<div class="stop">
+      <div class="stop-tl">
+        <div class="stop-dot ${cls}">${done?'✓':curr?'•':''}</div>
+        ${i<n-1?`<div class="stop-line${done?' done-line':''}"></div>`:''}
+      </div>
+      <div class="stop-body">
+        <div class="stop-name${cls==='pend'?' dim':''}">${stop.name}</div>
+        <div class="stop-detail">${cls==='curr'?'Current zone — vessel in transit':cls==='done'?`Passed${stop.date?' · '+fDate(stop.date):''}`:stop.date?'ETA '+fDate(stop.date):'Upcoming'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function routeStops(s){
+  const o=(s.origin_port||'').toLowerCase(),dest=s.dest_warehouse||'Destination';
+  const stops=[{name:s.origin_port||'Origin',date:s.created_at}];
+  if(o.includes('shanghai')||o.includes('tianjin')||o.includes('china'))
+    stops.push({name:'South China Sea'},{name:'Singapore / Malacca Strait'},{name:'Bay of Bengal'},{name:'Sri Lanka Waters'});
+  else if(o.includes('hamburg')||o.includes('rotterdam')||o.includes('germany')||o.includes('netherlands'))
+    stops.push({name:'English Channel'},{name:'Strait of Gibraltar'},{name:'Mediterranean Sea'},{name:'Suez Canal'},{name:'Red Sea'},{name:'Gulf of Aden'},{name:'Arabian Sea'});
+  else if(o.includes('jebel')||o.includes('dubai')||o.includes('uae'))
+    stops.push({name:'Strait of Hormuz'},{name:'Arabian Sea'});
+  else stops.push({name:'Open Ocean'});
+  stops.push({name:dest,date:s.eta});
+  return stops;
+}
+
+function buildCargoTab(s){
+  const c=ci(s.cargo_type);
+  const rows=[
+    ['PO Number',s.po_number,'ac'],['Cargo',s.cargo,''],
+    ['Type',c.label,''],['Quantity',s.quantity,''],
+    ['Supplier',s.supplier,''],['Country',s.supplier_country||'—',''],
+    ['Origin Port',s.origin_port,''],['Destination',s.dest_warehouse,''],
+    ['ETA',s.eta?fDate(s.eta):'—',''],['Added',s.created_at?fDate(s.created_at):'—',''],
+    ...(s.notes?[['Notes',s.notes,'']]:[[]])
+  ].filter(r=>r.length===3);
+  irows('d-cargo-rows',rows);
+  irows('d-cargo-rows2',rows);
+}
+
+function buildVesselTab(s){
+  const l=s.live||{};
+  irows('d-vessel-rows',[
+    ['MMSI',s.mmsi,'ac'],['IMO',l.imo||'—',''],
+    ['Vessel Name',l.name||s.vessel_name||'Awaiting AIS',''],
+    ['Call Sign',l.call_sign||'—',''],
+    ['Nav Status',NS[l.nav_status]||'—',''],
+    ['Draft',l.draught!=null?l.draught+' m':'—',''],
+  ]);
+}
+
+function buildLiveTab(s){
+  const l=s.live;
+  if(!l?.latitude){
+    document.getElementById('d-live-rows').innerHTML=`<div class="ais-empty">
+      <div class="ais-empty-ico"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.4" stroke-linecap="round"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="var(--text3)"/></svg></div>
+      No AIS signal yet<br>for MMSI ${s.mmsi}<br><br>
+      <span style="font-size:11px">Verify on MarineTraffic.com</span>
+    </div>`;
+    return;
+  }
+  irows('d-live-rows',[
+    ['Latitude',fCoord(l.latitude),'ac'],['Longitude',fCoord(l.longitude),'ac'],
+    ['Speed (SOG)',fKnots(l.sog),l.sog>0?'gr':''],
+    ['Course (COG)',fHdg(l.cog),''],['True Heading',fHdg(l.true_heading),''],
+    ['Nav Status',NS[l.nav_status]||'—',''],
+    ['AIS Destination',l.destination||'—',''],
+    ['Last Update',l.last_seen?new Date(l.last_seen).toLocaleTimeString():'—','gr'],
+  ]);
+}
+
+function irows(id,rows){
+  document.getElementById(id).innerHTML=rows.map(([k,v,c])=>
+    `<div class="ir"><span class="ik">${k}</span><span class="iv${c?' '+c:''}">${v||'—'}</span></div>`
+  ).join('');
+}
+
+function switchDTab(tab){
+  dtab=tab;
+  document.querySelectorAll('.dr-tab').forEach(t=>t.classList.toggle('on',t.dataset.tab===tab));
+  document.querySelectorAll('.dr-panel').forEach(p=>p.classList.toggle('on',p.id==='tab-'+tab));
+}
+document.querySelectorAll('.dr-tab').forEach(t=>t.addEventListener('click',()=>switchDTab(t.dataset.tab)));
+
+function closeDetail(){
+  SEL=null;
+  document.getElementById('drawer').classList.remove('vis');
+  document.getElementById('fleet-view').classList.remove('hidden');
+  renderSidebar();refreshRoutes();renderRouteLegend();
+}
+
+async function deleteShip(id){
+  if(!confirm('Remove this shipment from tracking?'))return;
+  try{
+    await fetch(`${API}/shipments/${id}`,{method:'DELETE'});
+    closeDetail();await loadShipments();
+    toast('del','Removed','Vessel removed from tracking.');
+  }catch{toast('err','Error','Could not remove shipment.');}
+}
+
+// ══════════════════════════════════════════════════════════
+//  COMMAND PALETTE
+// ══════════════════════════════════════════════════════════
+function openCmd(){
+  document.getElementById('cmd-pal').classList.add('vis');
+  const inp=document.getElementById('cmd-input');inp.value='';
+  renderCmd('');
+  setTimeout(()=>inp.focus(),40);
+}
+function closeCmdNow(){document.getElementById('cmd-pal').classList.remove('vis');}
+
+function renderCmd(q){
+  const query=(q||'').toLowerCase().trim();
+  const el=document.getElementById('cmd-results');
+  const actions=[
+    {name:'Fit All Ships',hint:'Center map on entire fleet',icon:`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>`,fn:`fitAll();closeCmdNow()`},
+    {name:'Toggle Routes',hint:'Show or hide all route lines',icon:`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l7 7M3 21l7-7M17 3l-7 7M17 21l-7-7"/></svg>`,fn:`toggleRoutes();closeCmdNow()`},
+    {name:'Add Shipment',hint:'Track a new vessel by MMSI',icon:`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,fn:`openModal();closeCmdNow()`},
+    {name:'Close Detail',hint:'Return to fleet overview',icon:`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,fn:`closeDetail();closeCmdNow()`},
+  ].filter(a=>!query||a.name.toLowerCase().includes(query)||a.hint.toLowerCase().includes(query));
+
+  const ships=SHIPS.filter(s=>{
+    if(!query)return true;
+    const nm=(s.live?.name||s.vessel_name||'').toLowerCase();
+    return nm.includes(query)||(s.po_number||'').toLowerCase().includes(query)||
+           (s.mmsi||'').includes(query)||(s.cargo||'').toLowerCase().includes(query)||
+           (s.origin_port||'').toLowerCase().includes(query);
+  });
+
+  let html='';
+  if(actions.length){
+    html+=`<div class="cmd-group-lbl">Actions</div>`;
+    html+=actions.map(a=>`<div class="cmd-item" onclick="${a.fn}">
+      <div class="cmd-ico">${a.icon}</div>
+      <div class="cmd-main"><div class="cmd-name">${a.name}</div><div class="cmd-hint2">${a.hint}</div></div>
+    </div>`).join('');
+  }
+  if(ships.length){
+    html+=`<div class="cmd-group-lbl">Shipments</div>`;
+    html+=ships.slice(0,6).map(s=>{
+      const vname=s.live?.name||s.vessel_name||('MMSI '+s.mmsi);
+      const col=shipColor(s),eta=fETA(s);
+      const orig=(s.origin_port||'—').split(',')[0];
+      const dest=(s.dest_warehouse||'—').split(' ')[0];
+      return`<div class="cmd-item" onclick="pickShip('${s.id}');closeCmdNow()">
+        <div class="cmd-ico" style="background:${col}18;border-color:${col}44">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round"><path d="M2 20l3-9h14l3 9"/><path d="M6 11V7a6 6 0 0112 0v4"/></svg>
+        </div>
+        <div class="cmd-main">
+          <div class="cmd-name">${vname}</div>
+          <div class="cmd-hint2">${orig} → ${dest} · ${s.po_number||'—'}</div>
+        </div>
+        <div class="cmd-tag" style="${eta.cls==='rd'?'color:var(--red)':''}">${eta.val}</div>
+      </div>`;
+    }).join('');
+  }
+  if(!html)html=`<div class="cmd-empty">No results for "${q}"</div>`;
+  el.innerHTML=html;
+}
+
+// ══════════════════════════════════════════════════════════
+//  FILTERS & KEYBOARD
+// ══════════════════════════════════════════════════════════
+document.querySelectorAll('.sf').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.sf').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');CF=t.dataset.f;renderSidebar();
+}));
+
+document.addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();openCmd();return;}
+  if(e.key==='Escape'){
+    if(document.getElementById('cmd-pal').classList.contains('vis')){closeCmdNow();return;}
+    if(document.getElementById('mo').classList.contains('vis')){closeModal();return;}
+    closeDetail();
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+//  MODAL
+// ══════════════════════════════════════════════════════════
+function openModal(){document.getElementById('mo').classList.add('vis');}
+function closeModal(){document.getElementById('mo').classList.remove('vis');clearForm();}
+function clearForm(){
+  ['f-mmsi','f-po','f-cargo','f-qty','f-eta','f-supplier','f-origin','f-dest','f-notes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  document.getElementById('f-type').value='';
+  document.getElementById('ferr').classList.remove('vis');
+}
+async function saveShipment(){
+  const mmsi=document.getElementById('f-mmsi').value.trim();
+  const po=document.getElementById('f-po').value.trim();
+  const cargo=document.getElementById('f-cargo').value.trim();
+  const ctype=document.getElementById('f-type').value;
+  const err=document.getElementById('ferr');
+  if(!/^\d{9}$/.test(mmsi)){err.textContent='MMSI must be exactly 9 digits.';err.classList.add('vis');return;}
+  if(!po){err.textContent='PO Number is required.';err.classList.add('vis');return;}
+  if(!cargo){err.textContent='Cargo description is required.';err.classList.add('vis');return;}
+  if(!ctype){err.textContent='Please select a cargo type.';err.classList.add('vis');return;}
+  err.classList.remove('vis');
+  const btn=document.getElementById('btn-s');btn.disabled=true;btn.textContent='Saving…';
+  try{
+    const r=await fetch(`${API}/shipments`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({mmsi,po_number:po,cargo,cargo_type:ctype,
+        quantity:document.getElementById('f-qty').value.trim(),
+        eta:document.getElementById('f-eta').value,
+        supplier:document.getElementById('f-supplier').value.trim(),
+        origin_port:document.getElementById('f-origin').value.trim(),
+        dest_warehouse:document.getElementById('f-dest').value.trim(),
+        notes:document.getElementById('f-notes').value.trim(),
+      })});
+    if(!r.ok){const e=await r.json();throw new Error(e.error||'Save failed');}
+    closeModal();await loadShipments();
+    toast('add','Tracking started',`MMSI ${mmsi} added. Awaiting first AIS signal…`);
+  }catch(e){err.textContent=e.message;err.classList.add('vis');}
+  finally{btn.disabled=false;btn.textContent='Start Tracking';}
+}
+document.getElementById('mo').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
+
+// ══════════════════════════════════════════════════════════
+//  TOASTS
+// ══════════════════════════════════════════════════════════
+const TOAST_ICO={
+  add:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>`,
+  del:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#98A2B3" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>`,
+  err:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+  info:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+};
+function toast(type,title,sub){
+  const feed=document.getElementById('feed'),el=document.createElement('div');
+  el.className='toast';
+  el.innerHTML=`<div class="ti">${TOAST_ICO[type]||TOAST_ICO.info}</div><div><div class="tt">${title}</div>${sub?`<div class="ts">${sub}</div>`:''}</div>`;
+  feed.prepend(el);
+  setTimeout(()=>{el.style.transition='opacity .35s,transform .35s';el.style.opacity='0';el.style.transform='translateX(-16px)';setTimeout(()=>el.remove(),360);},5500);
+}
+
+// ══════════════════════════════════════════════════════════
+//  CLOCK & BOOT
+// ══════════════════════════════════════════════════════════
+function tick(){
+  const d=new Date();
+  const utc=[d.getUTCHours(),d.getUTCMinutes(),d.getUTCSeconds()].map(n=>String(n).padStart(2,'0')).join(':');
+  document.getElementById('clock').textContent=utc+' UTC';
+  document.getElementById('rp-clock').textContent=utc+' UTC';
+}
+
+(async()=>{
+  setInterval(tick,1000);tick();
+  await loadShipments();
+  try{connectSSE();}catch{setAISStatus('offline');}
+  setInterval(loadShipments,POLL);
+  setTimeout(()=>{const l=document.getElementById('loading');l.classList.add('out');setTimeout(()=>l.remove(),600);},2200);
+})();
+</script>
+</body>
+</html>
