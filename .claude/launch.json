@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "shipment-backend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["src/app.js"],
+      "cwd": "${workspaceFolder}/backend",
+      "port": 3001
+    }
+  ]
+}

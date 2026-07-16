@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shipment Tracker — HUMANITY ERP</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --bg:      #060b14;
+      --surf:    #0b1422;
+      --elev:    #0f1b2e;
+      --card:    #0d1828;
+      --bdr:     rgba(255,255,255,0.055);
+      --bdr-hi:  rgba(59,130,246,0.28);
+      --t1:      #dde8ff;
+      --t2:      #5d7499;
+      --t3:      #2e3d54;
+      --cyan:    #22d3ee;
+      --green:   #4ade80;
+      --red:     #f87171;
+      --amber:   #fbbf24;
+      --blue:    #3b82f6;
+      --purple:  #a78bfa;
+    }
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family:'Inter',system-ui,sans-serif;
+      background:var(--bg); color:var(--t1);
+      height:100vh; display:flex; flex-direction:column;
+      overflow:hidden; -webkit-font-smoothing:antialiased;
+    }
+
+    /* ── LOADING ─────────────────────────────────────────── */
+    #loading {
+      position:fixed; inset:0; background:var(--bg);
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      z-index:9999; transition:opacity .6s ease;
+    }
+    #loading.out { opacity:0; pointer-events:none; }
+    .ld-brand {
+      font-size:22px; font-weight:800; letter-spacing:4px;
+      background:linear-gradient(90deg,var(--blue),var(--cyan));
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+      margin-bottom:6px;
+    }
+    .ld-sub { font-size:10px; color:var(--t3); letter-spacing:2.5px; text-transform:uppercase; margin-bottom:36px; }
+    .ld-bar { width:180px; height:2px; background:rgba(255,255,255,.05); border-radius:1px; overflow:hidden; }
+    .ld-fill { height:100%; background:linear-gradient(90deg,var(--blue),var(--cyan)); animation:ldAnim 1.6s ease-in-out forwards; }
+    @keyframes ldAnim { from{width:0} to{width:100%} }
+
+    /* ── HEADER ─────────────────────────────────────────── */
+    #header {
+      display:flex; align-items:center; padding:0 20px; height:50px;
+      background:var(--surf); border-bottom:1px solid var(--bdr);
+      flex-shrink:0; z-index:200;
+    }
+    .hdr-logo { display:flex; align-items:center; gap:10px; font-weight:700; font-size:13px; letter-spacing:2.5px; text-transform:uppercase; }
+    .hdr-icon {
+      width:30px; height:30px; border-radius:7px;
+      background:linear-gradient(135deg,var(--blue),var(--cyan));
+      display:flex; align-items:center; justify-content:center; font-size:15px;
+      box-shadow:0 0 18px rgba(59,130,246,.35);
+    }
+    .hdr-sep { width:1px; height:20px; background:var(--bdr); margin:0 14px; }
+    .hdr-sub { font-size:11px; font-weight:500; color:var(--t2); letter-spacing:1.2px; text-transform:uppercase; }
+    .hdr-right { margin-left:auto; display:flex; align-items:center; gap:18px; }
+    .hdr-live { display:flex; align-items:center; gap:7px; font-size:11px; color:var(--t2); }
+    .live-dot { width:7px; height:7px; border-radius:50%; background:var(--green); animation:ldot 2.4s ease-in-out infinite; }
+    @keyframes ldot { 0%,100%{box-shadow:0 0 0 0 rgba(74,222,128,.5)} 50%{box-shadow:0 0 0 5px rgba(74,222,128,0)} }
+    #clock { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--t2); }
+
+    /* ── STATS BAR ───────────────────────────────────────── */
+    #statsbar {
+      display:flex; align-items:center; padding:0 20px; height:46px;
+      background:var(--surf); border-bottom:1px solid var(--bdr); flex-shrink:0; gap:28px;
+    }
+    .si { display:flex; align-items:center; gap:10px; }
+    .si-icon { width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:13px; }
+    .ic-b { background:rgba(59,130,246,.12); color:#60a5fa; }
+    .ic-c { background:rgba(34,211,238,.10); color:var(--cyan); }
+    .ic-g { background:rgba(74,222,128,.10); color:var(--green); }
+    .ic-r { background:rgba(248,113,113,.10); color:var(--red); }
+    .ic-a { background:rgba(251,191,36,.10);  color:var(--amber); }
+    .ic-p { background:rgba(167,139,250,.10); color:var(--purple); }
+    .si-text { display:flex; flex-direction:column; }
+    .si-val { font-size:16px; font-weight:700; line-height:1; }
+    .si-lbl { font-size:9px; color:var(--t2); text-transform:uppercase; letter-spacing:.6px; margin-top:2px; }
+    .sdiv   { width:1px; height:22px; background:var(--bdr); flex-shrink:0; }
+
+    /* ── MAIN LAYOUT ─────────────────────────────────────── */
+    #main { display:flex; flex:1; overflow:hidden; }
+
+    /* ── LEFT PANEL ──────────────────────────────────────── */
+    #left {
+      width:310px; flex-shrink:0;
+      background:var(--surf); border-right:1px solid var(--bdr);
+      display:flex; flex-direction:column; overflow:hidden;
+    }
+    #ptop { padding:11px 12px; border-bottom:1px solid var(--bdr); }
+    .sw { position:relative; }
+    .sw::before { content:'⌕'; position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--t3); font-size:15px; pointer-events:none; }
+    #search {
+      width:100%; background:var(--elev); border:1px solid var(--bdr); border-radius:6px;
+      padding:7px 10px 7px 30px; color:var(--t1); font-size:12px;
+      outline:none; font-family:inherit; transition:border-color .2s;
+    }
+    #search:focus { border-color:var(--bdr-hi); }
+    #search::placeholder { color:var(--t3); }
+    #ftabs { display:flex; gap:3px; margin-top:9px; }
+    .ftab {
+      padding:4px 10px; border-radius:4px; font-size:11px; font-weight:500;
+      cursor:pointer; border:none; background:transparent; color:var(--t2);
+      transition:all .15s; font-family:inherit;
+    }
+    .ftab:hover:not(.on) { background:var(--elev); color:var(--t1); }
+    .ftab.on { background:rgba(59,130,246,.14); color:#60a5fa; }
+    #slist { flex:1; overflow-y:auto; padding:6px; }
+    #slist::-webkit-scrollbar { width:3px; }
+    #slist::-webkit-scrollbar-thumb { background:rgba(255,255,255,.09); border-radius:2px; }
+
+    /* ── SHIPMENT CARD ───────────────────────────────────── */
+    .scard {
+      background:var(--card); border:1px solid var(--bdr); border-radius:9px;
+      padding:12px; margin-bottom:5px; cursor:pointer; transition:all .15s;
+    }
+    .scard:hover { border-color:rgba(59,130,246,.3); background:var(--elev); transform:translateX(2px); }
+    .scard.sel { border-color:rgba(59,130,246,.5); background:rgba(59,130,246,.07); }
+    .sc-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; }
+    .sc-id  { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--t3); }
+    .badge  { font-size:9px; font-weight:600; padding:2px 7px; border-radius:100px; text-transform:uppercase; letter-spacing:.4px; }
+    .b-transit { background:rgba(34,211,238,.10); color:var(--cyan);  border:1px solid rgba(34,211,238,.2); }
+    .b-arrived { background:rgba(74,222,128,.10); color:var(--green); border:1px solid rgba(74,222,128,.2); }
+    .b-delayed { background:rgba(248,113,113,.10);color:var(--red);   border:1px solid rgba(248,113,113,.2);}
+    .b-loading { background:rgba(251,191,36,.10); color:var(--amber); border:1px solid rgba(251,191,36,.2); }
+    .sc-vessel { font-size:13px; font-weight:600; color:var(--t1); margin-bottom:3px; }
+    .sc-cargo  { font-size:10px; color:var(--t2); margin-bottom:8px; }
+    .sc-route  { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--t2); margin-bottom:8px; }
+    .rdot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+    .rarr { color:var(--t3); font-size:8px; }
+    .pbar  { height:3px; background:var(--elev); border-radius:2px; overflow:hidden; margin-bottom:5px; }
+    .pfill { height:100%; border-radius:2px; transition:width .6s ease; }
+    .pi-transit { background:linear-gradient(90deg,var(--blue),var(--cyan)); }
+    .pi-arrived { background:var(--green); }
+    .pi-delayed { background:var(--red); }
+    .pi-loading { background:var(--amber); }
+    .sc-foot { display:flex; justify-content:space-between; font-size:10px; color:var(--t3); }
+    .sc-eta  { color:var(--t2); }
+    .sc-eta.late { color:var(--red); }
+    .empty { text-align:center; padding:40px 16px; color:var(--t3); font-size:12px; }
+
+    /* ── MAP AREA ────────────────────────────────────────── */
+    #mapwrap { flex:1; position:relative; overflow:hidden; }
+    #map { width:100%; height:100%; }
+    .leaflet-control-zoom a { background:var(--surf)!important; border-color:var(--bdr)!important; color:var(--t2)!important; }
+    .leaflet-control-zoom a:hover { background:var(--elev)!important; color:var(--t1)!important; }
+    .leaflet-bar { border:1px solid var(--bdr)!important; box-shadow:none!important; }
+    .leaflet-control-attribution { background:rgba(6,11,20,.85)!important; color:var(--t3)!important; font-size:9px!important; }
+    .leaflet-control-attribution a { color:var(--t3)!important; }
+    .leaflet-control-scale-line { background:rgba(6,11,20,.7)!important; border-color:var(--t3)!important; color:var(--t2)!important; font-size:9px!important; }
+    .leaflet-tooltip { background:transparent!important; border:none!important; box-shadow:none!important; padding:0!important; }
+
+    /* ── DETAIL PANEL ────────────────────────────────────── */
+    #detail {
+      position:absolute; top:14px; right:14px; width:294px;
+      background:rgba(10,18,34,.97); border:1px solid rgba(255,255,255,.08);
+      border-radius:12px; backdrop-filter:blur(14px); z-index:500;
+      display:none; overflow:hidden;
+      box-shadow:0 24px 64px rgba(0,0,0,.55), 0 0 0 1px rgba(59,130,246,.1);
+    }
+    #detail.vis { display:block; animation:panIn .25s cubic-bezier(.2,0,.2,1); }
+    @keyframes panIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
+    #dh {
+      padding:14px 16px 12px; border-bottom:1px solid var(--bdr);
+      display:flex; justify-content:space-between; align-items:flex-start;
+      background:linear-gradient(135deg,rgba(59,130,246,.06),rgba(34,211,238,.04));
+    }
+    #d-name { font-size:14px; font-weight:700; color:var(--t1); margin-bottom:3px; }
+    #d-type { font-size:10px; color:var(--t2); }
+    #dcls { background:none; border:none; color:var(--t3); cursor:pointer; font-size:15px; padding:0; transition:color .15s; }
+    #dcls:hover { color:var(--t1); }
+
+    /* Route viz */
+    #d-rz { margin:12px 16px 0; padding:10px; background:var(--elev); border-radius:8px; border:1px solid var(--bdr); }
+    .rz-ports { display:flex; justify-content:space-between; font-size:9px; color:var(--t2); margin-bottom:9px; text-transform:uppercase; letter-spacing:.5px; }
+    .rz-track { height:4px; background:rgba(255,255,255,.05); border-radius:2px; position:relative; }
+    .rz-fill  { position:absolute; top:0; left:0; height:100%; border-radius:2px; background:linear-gradient(90deg,var(--blue),var(--cyan)); transition:width .5s; }
+    .rz-dot   {
+      position:absolute; top:-8px; width:20px; height:20px;
+      background:var(--elev); border:2px solid var(--cyan); border-radius:50%;
+      transform:translateX(-50%); display:flex; align-items:center; justify-content:center;
+      font-size:9px; transition:left .5s; box-shadow:0 0 10px rgba(34,211,238,.45);
+    }
+    .rz-pct { display:flex; justify-content:flex-end; font-size:10px; color:var(--cyan); margin-top:7px; font-family:'JetBrains Mono',monospace; }
+
+    /* Timeline */
+    #d-tl { padding:10px 16px; max-height:190px; overflow-y:auto; }
+    #d-tl::-webkit-scrollbar { width:3px; }
+    #d-tl::-webkit-scrollbar-thumb { background:rgba(255,255,255,.07); }
+    .tli { display:flex; gap:10px; padding-bottom:10px; }
+    .tli:last-child { padding-bottom:0; }
+    .tll { display:flex; flex-direction:column; align-items:center; flex-shrink:0; width:14px; }
+    .tldot { width:10px; height:10px; border-radius:50%; border:2px solid; flex-shrink:0; margin-top:1px; }
+    .tldot.done { background:var(--green); border-color:var(--green); }
+    .tldot.curr { background:var(--cyan); border-color:var(--cyan); box-shadow:0 0 7px rgba(34,211,238,.7); animation:cpulse 1.5s ease-in-out infinite; }
+    .tldot.pend { background:transparent; border-color:var(--t3); }
+    @keyframes cpulse { 0%,100%{box-shadow:0 0 4px rgba(34,211,238,.6)} 50%{box-shadow:0 0 12px rgba(34,211,238,.9)} }
+    .tlline { flex:1; width:1px; background:var(--bdr); margin:3px auto; }
+    .tlc { flex:1; }
+    .tln { font-size:11px; font-weight:500; color:var(--t1); }
+    .tln.dim { color:var(--t3); }
+    .tld { font-size:9px; color:var(--t3); margin-top:1px; font-family:'JetBrains Mono',monospace; }
+
+    /* Rows */
+    #d-rows { padding:0 16px 14px; }
+    .dr { display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid rgba(255,255,255,.025); }
+    .dr:last-child { border-bottom:none; }
+    .dk { font-size:10px; color:var(--t2); text-transform:uppercase; letter-spacing:.4px; }
+    .dv { font-size:11px; color:var(--t1); font-family:'JetBrains Mono',monospace; text-align:right; max-width:170px; word-break:break-all; }
+    .dv.c { color:var(--cyan); }
+    .dv.g { color:var(--green); }
+    .dv.r { color:var(--red); }
+    .dv.a { color:var(--amber); }
+
+    /* ── ARRIVAL FEED ────────────────────────────────────── */
+    #feed { position:absolute; bottom:50px; left:14px; width:278px; z-index:500; pointer-events:none; }
+    .toast {
+      background:rgba(10,18,34,.97); border:1px solid rgba(74,222,128,.22);
+      border-radius:9px; padding:10px 13px; margin-bottom:6px;
+      backdrop-filter:blur(10px); display:flex; gap:10px; align-items:flex-start;
+      animation:tin .35s cubic-bezier(.2,0,.2,1);
+      box-shadow:0 8px 32px rgba(0,0,0,.45);
+    }
+    @keyframes tin { from{transform:translateX(-110%);opacity:0} to{transform:none;opacity:1} }
+    .t-icon  { font-size:17px; flex-shrink:0; margin-top:1px; }
+    .t-title { font-size:11px; font-weight:600; color:var(--green); }
+    .t-sub   { font-size:10px; color:var(--t2); margin-top:2px; }
+
+    /* ── LEGEND ─────────────────────────────────────────── */
+    #legend {
+      position:absolute; bottom:14px; right:14px;
+      background:rgba(10,18,34,.95); border:1px solid var(--bdr);
+      border-radius:9px; padding:10px 13px; backdrop-filter:blur(10px); z-index:400;
+    }
+    .leg-ttl { font-size:9px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:var(--t3); margin-bottom:8px; }
+    .lgi { display:flex; align-items:center; gap:8px; margin-bottom:5px; font-size:10px; color:var(--t2); }
+    .lgi:last-child { margin-bottom:0; }
+    .lgdot  { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+    .lgsq   { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+    .lgline { width:18px; height:2px; flex-shrink:0; }
+    .lgdash { width:18px; height:0; border-top:2px dashed; flex-shrink:0; }
+
+    /* tooltip */
+    .ptip { background:var(--surf); border:1px solid rgba(255,255,255,.08); padding:6px 10px; border-radius:7px; font-size:11px; color:var(--t1); font-family:'Inter',sans-serif; white-space:nowrap; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+    .ptip-sub { font-size:9px; color:var(--t2); margin-top:2px; }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="ld-brand">HUMANITY ERP</div>
+  <div class="ld-sub">Shipment Tracker</div>
+  <div class="ld-bar"><div class="ld-fill"></div></div>
+</div>
+
+<div id="header">
+  <div class="hdr-logo">
+    <div class="hdr-icon">🚢</div>
+    HUMANITY ERP
+    <div class="hdr-sep"></div>
+    <span class="hdr-sub">Shipment Tracker</span>
+  </div>
+  <div class="hdr-right">
+    <div class="hdr-live"><div class="live-dot"></div> Live Tracking</div>
+    <div id="clock">00:00:00 UTC</div>
+  </div>
+</div>
+
+<div id="statsbar">
+  <div class="si">
+    <div class="si-icon ic-b">📦</div>
+    <div class="si-text"><div class="si-val" id="sv-tot">0</div><div class="si-lbl">Total Shipments</div></div>
+  </div>
+  <div class="sdiv"></div>
+  <div class="si">
+    <div class="si-icon ic-c">🚢</div>
+    <div class="si-text"><div class="si-val" id="sv-tr">0</div><div class="si-lbl">In Transit</div></div>
+  </div>
+  <div class="sdiv"></div>
+  <div class="si">
+    <div class="si-icon ic-g">🏭</div>
+    <div class="si-text"><div class="si-val" id="sv-ar">0</div><div class="si-lbl">Warehouse Reached</div></div>
+  </div>
+  <div class="sdiv"></div>
+  <div class="si">
+    <div class="si-icon ic-r">⚠</div>
+    <div class="si-text"><div class="si-val" id="sv-dl">0</div><div class="si-lbl">Delayed</div></div>
+  </div>
+  <div class="sdiv"></div>
+  <div class="si">
+    <div class="si-icon ic-a">✓</div>
+    <div class="si-text"><div class="si-val" id="sv-ot">0%</div><div class="si-lbl">On-Time Rate</div></div>
+  </div>
+  <div class="sdiv"></div>
+  <div class="si">
+    <div class="si-icon ic-p">⚡</div>
+    <div class="si-text"><div class="si-val" id="sv-sp">0 kn</div><div class="si-lbl">Fleet Avg Speed</div></div>
+  </div>
+</div>
+
+<div id="main">
+  <div id="left">
+    <div id="ptop">
+      <div class="sw">
+        <input type="text" id="search" placeholder="Search vessel, shipment, cargo…">
+      </div>
+      <div id="ftabs">
+        <button class="ftab on" data-f="all">All</button>
+        <button class="ftab" data-f="in_transit">In Transit</button>
+        <button class="ftab" data-f="arrived">Arrived</button>
+        <button class="ftab" data-f="delayed">Delayed</button>
+      </div>
+    </div>
+    <div id="slist"></div>
+  </div>
+
+  <div id="mapwrap">
+    <div id="map"></div>
+
+    <div id="detail">
+      <div id="dh">
+        <div>
+          <div id="d-name">—</div>
+          <div id="d-type">—</div>
+        </div>
+        <button id="dcls">✕</button>
+      </div>
+      <div id="d-rz">
+        <div class="rz-ports"><span id="d-orig">Origin</span><span id="d-dest">Destination</span></div>
+        <div class="rz-track">
+          <div class="rz-fill" id="d-fill" style="width:0%"></div>
+          <div class="rz-dot"  id="d-dot"  style="left:0%">🚢</div>
+        </div>
+        <div class="rz-pct" id="d-pct">0%</div>
+      </div>
+      <div id="d-tl"></div>
+      <div id="d-rows"></div>
+    </div>
+
+    <div id="feed"></div>
+
+    <div id="legend">
+      <div class="leg-ttl">Legend</div>
+      <div class="lgi"><div class="lgdot" style="background:var(--cyan)"></div> In Transit</div>
+      <div class="lgi"><div class="lgdot" style="background:var(--green)"></div> Warehouse Reached</div>
+      <div class="lgi"><div class="lgdot" style="background:var(--red)"></div> Delayed</div>
+      <div class="lgi"><div class="lgdot" style="background:var(--amber)"></div> Loading / Pending</div>
+      <div class="lgi"><div class="lgline" style="background:var(--blue);opacity:.55"></div> Completed Route</div>
+      <div class="lgi"><div class="lgdash" style="border-color:var(--blue);opacity:.3"></div> Ahead Route</div>
+      <div class="lgi"><div class="lgsq"  style="background:transparent;border:2px solid var(--green)"></div> Warehouse</div>
+      <div class="lgi"><div class="lgdot" style="background:transparent;border:2px solid var(--t2);width:8px;height:8px"></div> Port</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+//  MOCK DATA — no backend, fully self-contained
+// ════════════════════════════════════════════════════════════════
+
+const D = 864e5;   // ms in one day
+const NOW = Date.now();
+
+// Ports & Warehouses  [lat, lng] for Leaflet
+const LOCS = {
+  CNSHA:  { n:'Shanghai Port',           c:[31.23, 121.47], t:'port'      },
+  SGSIN:  { n:'Singapore Port',          c:[1.27,  103.82], t:'port'      },
+  AEDED:  { n:'Jebel Ali, Dubai',        c:[25.0,   55.07], t:'port'      },
+  NLRTM:  { n:'Rotterdam Port',          c:[51.90,   4.17], t:'port'      },
+  DEHAM:  { n:'Hamburg Port',            c:[53.54,   9.95], t:'port'      },
+  INMAA:  { n:'Mumbai Port',             c:[18.93,  72.84], t:'port'      },
+  WH_MUM: { n:'Mumbai Warehouse Hub',    c:[19.07,  72.88], t:'warehouse' },
+  WH_DEL: { n:'Delhi Distribution Ctr',  c:[28.52,  77.12], t:'warehouse' },
+  WH_BLR: { n:'Bangalore Warehouse',     c:[12.97,  77.59], t:'warehouse' },
+  WH_HYD: { n:'Hyderabad Fulfillment',   c:[17.38,  78.49], t:'warehouse' },
+};
+
+// Routes: waypoints [lat, lng] + named stops for timeline
+const ROUTES = {
+  SHA_MUM: {
+    pts: [[31.23,121.47],[21.0,113.5],[1.27,103.82],[5.5,80.5],[18.93,72.84]],
+    stops: ['Shanghai','South China Sea','Singapore','Sri Lanka Coast','Mumbai'],
+  },
+  DXB_MUM: {
+    pts: [[25.0,55.07],[22.0,62.0],[19.5,67.5],[18.93,72.84]],
+    stops: ['Dubai','Arabian Gulf','Arabian Sea','Mumbai'],
+  },
+  HAM_MUM: {
+    pts: [[53.54,9.95],[44.0,-9.0],[36.1,-5.4],[37.0,15.0],[30.5,32.3],[12.0,45.0],[5.5,80.5],[18.93,72.84]],
+    stops: ['Hamburg','Bay of Biscay','Gibraltar','Mediterranean','Suez Canal','Gulf of Aden','Indian Ocean','Mumbai'],
+  },
+  SIN_MUM: {
+    pts: [[1.27,103.82],[5.5,80.5],[12.0,72.0],[18.93,72.84]],
+    stops: ['Singapore','Sri Lanka Coast','Lakshadweep Sea','Mumbai'],
+  },
+  RTM_MUM: {
+    pts: [[51.90,4.17],[44.0,-9.0],[36.1,-5.4],[37.0,15.0],[30.5,32.3],[12.0,45.0],[5.5,80.5],[18.93,72.84]],
+    stops: ['Rotterdam','Bay of Biscay','Gibraltar','Mediterranean','Suez Canal','Gulf of Aden','Indian Ocean','Mumbai'],
+  },
+  SIN_DEL: {
+    pts: [[1.27,103.82],[5.5,80.5],[18.93,72.84],[20.0,73.5],[28.52,77.12]],
+    stops: ['Singapore','Indian Ocean','Mumbai','Gujarat Coast','Delhi'],
+  },
+  SHA_BLR: {
+    pts: [[31.23,121.47],[21.0,113.5],[1.27,103.82],[5.5,80.5],[12.97,77.59]],
+    stops: ['Shanghai','South China Sea','Singapore','Indian Ocean','Bangalore'],
+  },
+  DXB_HYD: {
+    pts: [[25.0,55.07],[22.0,62.0],[17.38,70.0],[17.38,78.49]],
+    stops: ['Dubai','Arabian Sea','Vizag Coast','Hyderabad'],
+  },
+};
+
+const SHIPS = [
+  {
+    id:'SHP-2026-0741', po:'PO-2026-1284', flag:'🇩🇪',
+    vessel:'MV Nordic Horizon',   mmsi:'211332801',
+    cargo:'Industrial Machinery', qty:'48 Units / 320 MT',
+    supplier:'Jiangsu Industrial Co.',
+    ok:'CNSHA', dk:'WH_MUM', rk:'SHA_MUM',
+    status:'in_transit', prog:0.67, sog:13.8, type:'cargo',
+    eta:new Date(NOW+2.5*D), dep:new Date(NOW-8*D),
+  },
+  {
+    id:'SHP-2026-0739', po:'PO-2026-1276', flag:'🇦🇪',
+    vessel:'MV Arabian Pride',    mmsi:'470456789',
+    cargo:'Petrochemical Products',qty:'12,000 MT',
+    supplier:'ADNOC Distribution',
+    ok:'AEDED', dk:'WH_MUM', rk:'DXB_MUM',
+    status:'in_transit', prog:0.81, sog:12.6, type:'tanker',
+    eta:new Date(NOW+0.9*D), dep:new Date(NOW-3.6*D),
+  },
+  {
+    id:'SHP-2026-0738', po:'PO-2026-1268', flag:'🇵🇦',
+    vessel:'MV Meridian Star',    mmsi:'352001834',
+    cargo:'Pharmaceutical Chemicals',qty:'85 MT / 420 Drums',
+    supplier:'Swiss Pharma AG',
+    ok:'DEHAM', dk:'WH_MUM', rk:'HAM_MUM',
+    status:'delayed', prog:0.51, sog:8.9, type:'cargo',
+    delay:'Weather delay — Gulf of Aden',
+    eta:new Date(NOW+9*D), dep:new Date(NOW-14*D),
+  },
+  {
+    id:'SHP-2026-0736', po:'PO-2026-1256', flag:'🇸🇬',
+    vessel:'MV Pacific Merchant', mmsi:'564321987',
+    cargo:'Consumer Electronics', qty:'2,400 Cartons / 52 MT',
+    supplier:'Asia Pacific Electronics',
+    ok:'SGSIN', dk:'WH_BLR', rk:'SHA_BLR',
+    status:'in_transit', prog:0.39, sog:14.1, type:'cargo',
+    eta:new Date(NOW+5*D), dep:new Date(NOW-3.5*D),
+  },
+  {
+    id:'SHP-2026-0734', po:'PO-2026-1248', flag:'🇳🇱',
+    vessel:'MV Rotterdam Bridge', mmsi:'244567123',
+    cargo:'Chemical Feedstock',   qty:'8,500 MT',
+    supplier:'BASF SE Rotterdam',
+    ok:'NLRTM', dk:'WH_MUM', rk:'RTM_MUM',
+    status:'in_transit', prog:0.24, sog:15.3, type:'tanker',
+    eta:new Date(NOW+14*D), dep:new Date(NOW-4.5*D),
+  },
+  {
+    id:'SHP-2026-0733', po:'PO-2026-1244', flag:'🇸🇬',
+    vessel:'MV Eastern Carrier',  mmsi:'565778821',
+    cargo:'Textile & Apparel',    qty:'3,800 Cartons / 55 MT',
+    supplier:'Asia Pacific Textiles',
+    ok:'SGSIN', dk:'WH_DEL', rk:'SIN_DEL',
+    status:'in_transit', prog:0.58, sog:13.2, type:'cargo',
+    eta:new Date(NOW+3.5*D), dep:new Date(NOW-6*D),
+  },
+  {
+    id:'SHP-2026-0731', po:'PO-2026-1239', flag:'🇸🇬',
+    vessel:'MV Singapore Voyager',mmsi:'565123456',
+    cargo:'Textile & Apparel',    qty:'3,200 Cartons / 48 MT',
+    supplier:'Asia Pacific Textiles',
+    ok:'SGSIN', dk:'WH_HYD', rk:'DXB_HYD',
+    status:'arrived', prog:1.0, sog:0, type:'cargo',
+    eta:new Date(NOW-0.6*D), dep:new Date(NOW-7*D), arrivedAt:new Date(NOW-0.6*D),
+  },
+  {
+    id:'SHP-2026-0728', po:'PO-2026-1225', flag:'🇩🇪',
+    vessel:'MV Hamburg Express',  mmsi:'211445678',
+    cargo:'Precision Equipment',  qty:'24 Units / 180 MT',
+    supplier:'Siemens Industrial GmbH',
+    ok:'DEHAM', dk:'WH_DEL', rk:'HAM_MUM',
+    status:'arrived', prog:1.0, sog:0, type:'cargo',
+    eta:new Date(NOW-1.4*D), dep:new Date(NOW-21*D), arrivedAt:new Date(NOW-1.4*D),
+  },
+  {
+    id:'SHP-2026-0725', po:'PO-2026-1210', flag:'🇦🇪',
+    vessel:'MV Gulf Star',        mmsi:'470789012',
+    cargo:'Petrochemical — LPG',  qty:'5,800 MT',
+    supplier:'Emirates Gas Co.',
+    ok:'AEDED', dk:'WH_MUM', rk:'DXB_MUM',
+    status:'loading', prog:0, sog:0, type:'tanker',
+    eta:new Date(NOW+5*D), dep:null,
+  },
+];
+
+// ════════════════════════════════════════════════════════════════
+//  UTILITIES
+// ════════════════════════════════════════════════════════════════
+
+function geoLen(a, b) {
+  const R=6371, φ1=a[0]*Math.PI/180, φ2=b[0]*Math.PI/180,
+        dφ=(b[0]-a[0])*Math.PI/180, dλ=(b[1]-a[1])*Math.PI/180;
+  const x=Math.sin(dφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+
+function lerp(pts, p) {
+  if (p<=0) return [...pts[0]];
+  if (p>=1) return [...pts[pts.length-1]];
+  let tot=0, segs=[];
+  for (let i=0;i<pts.length-1;i++){segs.push(geoLen(pts[i],pts[i+1]));tot+=segs[i];}
+  let tgt=tot*p, acc=0;
+  for (let i=0;i<segs.length;i++){
+    if (acc+segs[i]>=tgt){
+      const t=(tgt-acc)/segs[i];
+      return [pts[i][0]+(pts[i+1][0]-pts[i][0])*t, pts[i][1]+(pts[i+1][1]-pts[i][1])*t];
+    }
+    acc+=segs[i];
+  }
+  return [...pts[pts.length-1]];
+}
+
+function bear(a, b) {
+  const φ1=a[0]*Math.PI/180, φ2=b[0]*Math.PI/180, dλ=(b[1]-a[1])*Math.PI/180;
+  return (Math.atan2(Math.sin(dλ)*Math.cos(φ2), Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(dλ))*180/Math.PI+360)%360;
+}
+
+function slices(pts, p) {
+  const pos=lerp(pts,p);
+  let tot=0, segs=[];
+  for (let i=0;i<pts.length-1;i++){segs.push(geoLen(pts[i],pts[i+1]));tot+=segs[i];}
+  const tgt=tot*p;
+  const done=[pts[0]]; let acc=0;
+  for (let i=0;i<segs.length;i++){
+    if (acc+segs[i]<tgt){done.push(pts[i+1]);acc+=segs[i];}else break;
+  }
+  done.push(pos);
+  const ahead=[pos]; acc=0;
+  for (let i=0;i<segs.length;i++){acc+=segs[i]; if(acc>tgt)ahead.push(pts[i+1]);}
+  return {done,ahead,pos};
+}
+
+function sColor(s) {
+  return {in_transit:'#22d3ee',arrived:'#4ade80',delayed:'#f87171',loading:'#fbbf24'}[s]||'#94a3b8';
+}
+
+function fDate(d) {
+  if (!d) return '—';
+  return d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'UTC'})+' UTC';
+}
+
+function fETA(s) {
+  if (s.status==='arrived') return 'Arrived';
+  if (s.status==='loading') return 'Awaiting departure';
+  if (!s.eta) return '—';
+  const diff=s.eta-Date.now();
+  if (diff<0) return 'Overdue';
+  const d=Math.floor(diff/D), h=Math.floor((diff%D)/36e5);
+  return d>0 ? `${d}d ${h}h remaining` : `${h}h remaining`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  MAP
+// ════════════════════════════════════════════════════════════════
+
+const map = L.map('map',{center:[22,68],zoom:4,zoomControl:false,attributionControl:true});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+  attribution:'© OpenStreetMap contributors, © CARTO',
+  subdomains:'abcd', maxZoom:19,
+}).addTo(map);
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.control.scale({imperial:false,metric:true,position:'bottomleft'}).addTo(map);
+
+// Port / Warehouse markers
+function mkPortIcon(t) {
+  const wh=t==='warehouse', col=wh?'#4ade80':'#5d7499', sz=wh?14:9, r=wh?'3px':'50%';
+  return L.divIcon({
+    html:`<div style="width:${sz}px;height:${sz}px;border-radius:${r};background:${col}18;border:2px solid ${col};box-shadow:0 0 ${wh?12:6}px ${col}55"></div>`,
+    className:'', iconSize:[sz,sz], iconAnchor:[sz/2,sz/2],
+  });
+}
+Object.values(LOCS).forEach(p=>{
+  L.marker(p.c,{icon:mkPortIcon(p.t),zIndexOffset:10}).addTo(map)
+   .bindTooltip(`<div class="ptip"><strong>${p.n}</strong><div class="ptip-sub">${p.t==='warehouse'?'🏭 Warehouse':'⚓ Port'}</div></div>`,{permanent:false,offset:[0,-8]});
+});
+
+// Ship icon
+function shipIcon(hdg, status) {
+  const col=sColor(status);
+  const svg=`<svg width="22" height="28" viewBox="0 0 22 28" xmlns="http://www.w3.org/2000/svg">
+    <polygon points="11,1 20,25 11,19 2,25" fill="${col}" opacity=".93"/>
+    <line x1="11" y1="6" x2="11" y2="17" stroke="rgba(0,0,0,.35)" stroke-width="1.5"/>
+  </svg>`;
+  return L.divIcon({
+    html:`<div style="transform:rotate(${hdg}deg);filter:drop-shadow(0 0 5px ${col}95)">${svg}</div>`,
+    className:'', iconSize:[22,28], iconAnchor:[11,14],
+  });
+}
+
+const MKS={}, LDONE={}, LAHEAD={};
+
+function initShip(s) {
+  const route=ROUTES[s.rk]; if(!route) return;
+  const pts=route.pts;
+  const {done,ahead,pos}=slices(pts,s.prog);
+  const col=sColor(s.status);
+  let hdg=0;
+  if (s.prog>0&&s.prog<1){const n=lerp(pts,Math.min(s.prog+0.02,1));hdg=bear(pos,n);}
+  s._pos=pos; s._hdg=hdg;
+
+  if (done.length>1) LDONE[s.id]=L.polyline(done,{color:col,weight:2,opacity:.55}).addTo(map);
+  if (ahead.length>1&&s.status!=='arrived') LAHEAD[s.id]=L.polyline(ahead,{color:col,weight:1.5,opacity:.28,dashArray:'6,9'}).addTo(map);
+
+  if (s.status!=='arrived'&&s.status!=='loading') {
+    const mk=L.marker(pos,{icon:shipIcon(hdg,s.status),zIndexOffset:200}).addTo(map);
+    mk.bindTooltip(`<div class="ptip"><strong>${s.vessel}</strong><div class="ptip-sub">${s.id} · ${s.sog} kn</div></div>`,{permanent:false,offset:[0,-14]});
+    mk.on('click',()=>pickShip(s.id));
+    MKS[s.id]=mk;
+  }
+  if (s.status==='arrived') {
+    const dp=LOCS[s.dk];
+    if (dp) {
+      const am=L.circleMarker(dp.c,{radius:8,color:col,fillColor:col,fillOpacity:.18,weight:2.5}).addTo(map);
+      am.bindTooltip(`<div class="ptip"><strong>${s.vessel}</strong><div class="ptip-sub">Arrived · ${dp.n}</div></div>`,{permanent:false,offset:[0,-10]});
+      am.on('click',()=>pickShip(s.id));
+      MKS[s.id]=am;
+    }
+  }
+}
+SHIPS.forEach(initShip);
+
+// ════════════════════════════════════════════════════════════════
+//  ANIMATION LOOP
+// ════════════════════════════════════════════════════════════════
+
+const SPD=0.00013;
+function tick() {
+  SHIPS.forEach(s=>{
+    if (s.status!=='in_transit') return;
+    const route=ROUTES[s.rk]; if(!route) return;
+    s.prog=Math.min(1,s.prog+SPD);
+    const {done,ahead,pos}=slices(route.pts,s.prog);
+    const n=lerp(route.pts,Math.min(s.prog+0.02,1));
+    s._pos=pos; s._hdg=bear(pos,n);
+    const mk=MKS[s.id];
+    if(mk&&mk.setLatLng){mk.setLatLng(pos);mk.setIcon(shipIcon(s._hdg,s.status));}
+    if(LDONE[s.id]) LDONE[s.id].setLatLngs(done);
+    if(LAHEAD[s.id]) LAHEAD[s.id].setLatLngs(ahead);
+    if(SEL===s.id) syncDetail(s);
+  });
+  renderList();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  LEFT PANEL
+// ════════════════════════════════════════════════════════════════
+
+let SEL=null, CF='all', CQ='';
+
+function renderList() {
+  const el=document.getElementById('slist');
+  const list=SHIPS.filter(s=>{
+    if (CF!=='all'&&s.status!==CF) return false;
+    if (CQ){const q=CQ.toLowerCase();return s.vessel.toLowerCase().includes(q)||s.id.toLowerCase().includes(q)||s.cargo.toLowerCase().includes(q);}
+    return true;
+  });
+  if (!list.length){el.innerHTML='<div class="empty">No shipments found</div>';return;}
+  const SL={in_transit:'In Transit',arrived:'Arrived',delayed:'Delayed',loading:'Loading'};
+  el.innerHTML=list.map(s=>{
+    const op=LOCS[s.ok],dp=LOCS[s.dk],col=sColor(s.status),pct=Math.round(s.prog*100);
+    return `<div class="scard${SEL===s.id?' sel':''}" onclick="pickShip('${s.id}')">
+      <div class="sc-top"><span class="sc-id">${s.id}</span><span class="badge b-${s.status}">${SL[s.status]}</span></div>
+      <div class="sc-vessel">${s.flag} ${s.vessel}</div>
+      <div class="sc-cargo">${s.cargo} · ${s.qty}</div>
+      <div class="sc-route">
+        <div class="rdot" style="background:${col}"></div>
+        <span>${op?.n||s.ok}</span><span class="rarr">→</span><span>${dp?.n||s.dk}</span>
+      </div>
+      ${s.status!=='loading'?`
+        <div class="pbar"><div class="pfill pi-${s.status}" style="width:${pct}%"></div></div>
+        <div class="sc-foot">
+          <span>${pct}% complete</span>
+          <span class="sc-eta${s.status==='delayed'?' late':''}">${fETA(s)}</span>
+        </div>`:`
+        <div class="sc-foot"><span style="color:var(--amber)">⚡ Awaiting departure</span><span>ETA ${fDate(s.eta)}</span></div>`}
+    </div>`;
+  }).join('');
+}
+
+function updateStats() {
+  const t=SHIPS.length, tr=SHIPS.filter(s=>s.status==='in_transit').length,
+        ar=SHIPS.filter(s=>s.status==='arrived').length, dl=SHIPS.filter(s=>s.status==='delayed').length,
+        spd=SHIPS.filter(s=>s.sog>0), avg=spd.length?(spd.reduce((a,s)=>a+s.sog,0)/spd.length).toFixed(1):'0.0';
+  document.getElementById('sv-tot').textContent=t;
+  document.getElementById('sv-tr').textContent=tr;
+  document.getElementById('sv-ar').textContent=ar;
+  document.getElementById('sv-dl').textContent=dl;
+  document.getElementById('sv-ot').textContent=Math.round((t-dl)/t*100)+'%';
+  document.getElementById('sv-sp').textContent=avg+' kn';
+}
+
+// ════════════════════════════════════════════════════════════════
+//  DETAIL PANEL
+// ════════════════════════════════════════════════════════════════
+
+function pickShip(id) {
+  SEL=id; renderList();
+  const s=SHIPS.find(x=>x.id===id); if(!s) return;
+  const target=s._pos||LOCS[s.ok]?.c;
+  if (target) map.flyTo(target,Math.max(map.getZoom(),5),{animate:true,duration:1.2});
+  const op=LOCS[s.ok],dp=LOCS[s.dk];
+  document.getElementById('d-name').textContent=`${s.flag} ${s.vessel}`;
+  document.getElementById('d-type').textContent=`${s.type.charAt(0).toUpperCase()+s.type.slice(1)} Vessel · MMSI ${s.mmsi}`;
+  document.getElementById('d-orig').textContent=op?.n||s.ok;
+  document.getElementById('d-dest').textContent=dp?.n||s.dk;
+  syncDetail(s);
+  buildTimeline(s);
+  buildRows(s);
+  document.getElementById('detail').classList.add('vis');
+}
+
+function syncDetail(s) {
+  const pct=Math.round(s.prog*100);
+  document.getElementById('d-fill').style.width=pct+'%';
+  document.getElementById('d-dot').style.left=Math.max(0,Math.min(100,pct))+'%';
+  document.getElementById('d-pct').textContent=pct+'% of route complete';
+}
+
+function buildTimeline(s) {
+  const route=ROUTES[s.rk]; if(!route) return;
+  const pts=route.pts, stops=route.stops;
+  let tot=0,segs=[];
+  for(let i=0;i<pts.length-1;i++){segs.push(geoLen(pts[i],pts[i+1]));tot+=segs[i];}
+  const tgt=tot*s.prog;
+  let acc=0,passed=[0];
+  for(let i=0;i<segs.length;i++){acc+=segs[i];if(acc<=tgt)passed.push(i+1);}
+  const currIdx=passed[passed.length-1];
+  document.getElementById('d-tl').innerHTML=stops.map((name,i)=>{
+    const done=passed.includes(i)&&i<currIdx, curr=i===currIdx&&s.prog>0&&s.prog<1, isEnd=i===stops.length-1;
+    const cls=(done||(i===0&&s.prog>0)||(s.status==='arrived'&&isEnd))?'done':curr?'curr':'pend';
+    return `<div class="tli">
+      <div class="tll">
+        <div class="tldot ${cls}"></div>
+        ${i<stops.length-1?'<div class="tlline"></div>':''}
+      </div>
+      <div class="tlc">
+        <div class="tln${cls==='pend'?' dim':''}">${name}</div>
+        <div class="tld">${curr?'● Current position':cls==='done'?'Passed':'ETA pending'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function buildRows(s) {
+  const SL={in_transit:'In Transit',arrived:'Arrived',delayed:'Delayed',loading:'Loading'};
+  const SC={in_transit:'c',arrived:'g',delayed:'r',loading:'a'};
+  const rows=[
+    ['Shipment ID',s.id,''],['PO Number',s.po,''],['Supplier',s.supplier,''],
+    ['Cargo',s.cargo,''],['Quantity',s.qty,''],
+    ['Status',SL[s.status],SC[s.status]],
+    ['Speed',s.sog>0?s.sog+' kn':'Stationary',s.sog>0?'c':''],
+    ['Heading',s._hdg!=null?Math.round(s._hdg)+'°':'—',''],
+    ['Departed',fDate(s.dep),''],
+    ['ETA',s.status==='arrived'?'Arrived':fDate(s.eta),s.status==='delayed'?'r':s.status==='arrived'?'g':''],
+    ...(s.delay?[['Delay Note',s.delay,'r']]:[]),
+  ];
+  document.getElementById('d-rows').innerHTML=rows.map(([k,v,c])=>
+    `<div class="dr"><span class="dk">${k}</span><span class="dv${c?' '+c:''}">${v}</span></div>`
+  ).join('');
+}
+
+document.getElementById('dcls').addEventListener('click',()=>{
+  document.getElementById('detail').classList.remove('vis');
+  SEL=null; renderList();
+});
+
+// Filters & search
+document.querySelectorAll('.ftab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.ftab').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on'); CF=t.dataset.f; renderList();
+}));
+document.getElementById('search').addEventListener('input',e=>{CQ=e.target.value;renderList();});
+
+// ════════════════════════════════════════════════════════════════
+//  ARRIVAL TOASTS
+// ════════════════════════════════════════════════════════════════
+
+function toast(s) {
+  const feed=document.getElementById('feed');
+  const el=document.createElement('div');
+  el.className='toast';
+  el.innerHTML=`<div class="t-icon">🏭</div><div><div class="t-title">Warehouse Reached</div><div class="t-sub">${s.vessel} · ${LOCS[s.dk]?.n||s.dk}</div></div>`;
+  feed.prepend(el);
+  setTimeout(()=>{el.style.transition='opacity .5s,transform .5s';el.style.opacity='0';el.style.transform='translateX(-110%)';setTimeout(()=>el.remove(),500);},5500);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  CLOCK
+// ════════════════════════════════════════════════════════════════
+
+function updateClock() {
+  const d=new Date();
+  document.getElementById('clock').textContent=
+    [d.getUTCHours(),d.getUTCMinutes(),d.getUTCSeconds()].map(n=>String(n).padStart(2,'0')).join(':')+' UTC';
+}
+
+// ════════════════════════════════════════════════════════════════
+//  BOOT
+// ════════════════════════════════════════════════════════════════
+
+renderList();
+updateStats();
+updateClock();
+
+setInterval(tick, 1000);
+setInterval(updateClock, 1000);
+
+setTimeout(()=>{
+  SHIPS.filter(s=>s.status==='arrived').forEach((s,i)=>setTimeout(()=>toast(s),i*1800));
+}, 2800);
+
+setTimeout(()=>{
+  const lo=document.getElementById('loading');
+  lo.classList.add('out');
+  setTimeout(()=>lo.remove(),700);
+},1900);
+</script>
+</body>
+</html>

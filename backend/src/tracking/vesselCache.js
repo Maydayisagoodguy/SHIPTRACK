@@ -1,30 +1,70 @@
-// In-memory store: MMSI → vessel state (latest AIS data)
+// In-memory store: MMSI -> latest normalized vessel state.
 const store = new Map();
-const MAX = parseInt(process.env.MAX_VESSELS || '1000');
+const tracks = new Map();
+const MAX = parseInt(process.env.MAX_VESSELS || '1000', 10);
+const MAX_TRACK_POINTS = parseInt(process.env.MAX_TRACK_POINTS || '720', 10);
 
 function update(mmsi, fields) {
   const existing = store.get(mmsi) || { mmsi };
   const next = { ...existing };
-  for (const [k, v] of Object.entries(fields)) {
-    if (v !== undefined && v !== null && v !== '') next[k] = v;
+
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined && value !== null && value !== '') next[key] = value;
   }
-  next.last_seen = new Date().toISOString();
+
+  next.received_at = new Date().toISOString();
   store.set(mmsi, next);
 
+  if (Number.isFinite(fields.latitude) && Number.isFinite(fields.longitude) && fields.position_at) {
+    const track = tracks.get(mmsi) || [];
+    const previous = track[track.length - 1];
+    if (!previous || previous.position_at !== fields.position_at) {
+      track.push({
+        latitude: fields.latitude,
+        longitude: fields.longitude,
+        position_at: fields.position_at,
+        sog: fields.sog ?? null,
+        cog: fields.cog ?? null,
+      });
+      if (track.length > MAX_TRACK_POINTS) track.splice(0, track.length - MAX_TRACK_POINTS);
+      tracks.set(mmsi, track);
+    }
+  }
+
   if (store.size > MAX) {
-    // Evict least-recently-seen
-    let oldest = null, oldestTime = Infinity;
-    for (const [m, v] of store.entries()) {
-      const t = new Date(v.last_seen || 0).getTime();
-      if (t < oldestTime) { oldestTime = t; oldest = m; }
+    let oldest = null;
+    let oldestTime = Infinity;
+    for (const [key, vessel] of store.entries()) {
+      const time = new Date(vessel.received_at || 0).getTime();
+      if (time < oldestTime) {
+        oldestTime = time;
+        oldest = key;
+      }
     }
     if (oldest) store.delete(oldest);
   }
 }
 
-function get(mmsi)  { return store.get(mmsi) || null; }
-function getAll()   { return Array.from(store.values()); }
-function size()     { return store.size; }
-function clear(mmsi){ store.delete(mmsi); }
+function quality(vessel) {
+  if (!vessel || !vessel.position_at) {
+    return { state: 'no_signal', ageSeconds: null, isLive: false };
+  }
 
-module.exports = { update, get, getAll, size, clear };
+  const observed = new Date(vessel.position_at).getTime();
+  const ageSeconds = Number.isFinite(observed)
+    ? Math.max(0, Math.floor((Date.now() - observed) / 1000))
+    : null;
+
+  if (ageSeconds === null) return { state: 'no_signal', ageSeconds: null, isLive: false };
+  if (ageSeconds <= 15 * 60) return { state: 'live', ageSeconds, isLive: true };
+  if (ageSeconds <= 6 * 60 * 60) return { state: 'recent', ageSeconds, isLive: false };
+  return { state: 'stale', ageSeconds, isLive: false };
+}
+
+function get(mmsi) { return store.get(mmsi) || null; }
+function getAll() { return Array.from(store.values()); }
+function size() { return store.size; }
+function clear(mmsi) { store.delete(mmsi); }
+function getTrack(mmsi) { return tracks.get(mmsi) || []; }
+
+module.exports = { update, quality, get, getAll, getTrack, size, clear };
